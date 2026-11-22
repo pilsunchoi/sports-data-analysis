@@ -93,7 +93,7 @@ def mask_jumps(values: np.ndarray, jump: np.ndarray, half: int) -> np.ndarray:
     """창이 jump를 걸치는 시점의 값을 NaN으로 바꾼다. 창은 앞뒤로 half칸이다.
 
     jump[k]가 참이면 k-1과 k 사이가 끊긴 것이므로, 두 프레임을 모두 포함하는 창,
-    곧 중심이 k-half부터 k+half-1까지인 창의 값을 버린다. half가 0이면 k만 버린다.
+    즉 중심이 k-half부터 k+half-1까지인 창의 값을 버린다. half가 0이면 k만 버린다.
     """
     out = np.array(values, dtype=float)
     n = out.shape[-1]

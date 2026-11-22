@@ -13,7 +13,7 @@ def standardize(X) -> np.ndarray:
 
 
 def pca(Z) -> dict:
-    """표준화한 자료 Z의 주성분 분석. 고윳값(분산), 적재(열이 주성분), 점수, 분산의 비율을 돌려준다."""
+    """표준화한 데이터 Z의 주성분 분석. 고윳값(분산), 적재(열이 주성분), 점수, 분산의 비율을 돌려준다."""
     Z = np.asarray(Z, float)
     U, s, Vt = np.linalg.svd(Z - Z.mean(axis=0), full_matrices=False)
     values = s ** 2 / (len(Z) - 1)
@@ -23,7 +23,7 @@ def pca(Z) -> dict:
 
 
 def parallel_analysis(Z, n_sim: int = 500, rng=None, q: float = 95) -> np.ndarray:
-    """열마다 값을 따로 섞어 변수 사이의 상관을 없앤 자료에서 고윳값의 q% 분위수를 구한다."""
+    """열마다 값을 따로 섞어 변수 사이의 상관을 없앤 데이터에서 고윳값의 q% 분위수를 구한다."""
     rng = rng or np.random.default_rng(0)
     Z = np.asarray(Z, float)
     sims = np.empty((n_sim, Z.shape[1]))
@@ -90,7 +90,7 @@ def adjusted_rand(a, b) -> float:
 
 
 def gap_statistic(X, ks, n_ref: int = 20, rng=None, n_init: int = 10):
-    """간격 통계량. 자료의 범위 안에 고르게 뿌린 기준 자료의 log(군집 내 제곱합)의 평균에서 자료의 것을 뺀다.
+    """간격 통계량. 데이터의 범위 안에 고르게 뿌린 기준 데이터의 log(군집 내 제곱합)의 평균에서 데이터의 것을 뺀다.
     k마다의 간격과 그 표준오차를 돌려준다."""
     rng = rng or np.random.default_rng(0)
     X = np.asarray(X, float)

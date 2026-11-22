@@ -10,7 +10,7 @@ PITCH = ((0.0, 120.0), (0.0, 80.0))
 
 
 def _kernel(at, x, h: float, bounds=None) -> np.ndarray:
-    """1차원 정규 커널의 값. 행은 평가하는 점, 열은 자료의 점이다. bounds를 주면 양쪽 경계에서 반사한다."""
+    """1차원 정규 커널의 값. 행은 평가하는 점, 열은 데이터의 점이다. bounds를 주면 양쪽 경계에서 반사한다."""
     at, x = np.asarray(at, float)[:, None], np.asarray(x, float)[None, :]
     phi = lambda u: np.exp(-0.5 * (u / h) ** 2) / (h * np.sqrt(2 * np.pi))
     k = phi(at - x)
@@ -27,7 +27,7 @@ def kde_grid(x, y, gx, gy, h: float, reflect: bool = True) -> np.ndarray:
 
 
 def kde_at(x, y, ax, ay, h: float, reflect: bool = True, chunk: int = 2000) -> np.ndarray:
-    """점 (ax, ay)들에서의 밀도. 자료는 (x, y)다."""
+    """점 (ax, ay)들에서의 밀도. 데이터는 (x, y)다."""
     bx, by = PITCH if reflect else (None, None)
     ax, ay = np.asarray(ax, float), np.asarray(ay, float)
     out = np.empty(len(ax))
