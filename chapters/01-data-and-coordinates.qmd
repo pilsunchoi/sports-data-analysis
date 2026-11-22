@@ -1,0 +1,529 @@
+---
+title: "데이터 1장. 데이터와 좌표 — 영상은 어떻게 표가 되는가"
+lang: ko
+format:
+  gfm:
+    toc: true
+    toc-depth: 2
+    wrap: none
+jupyter: python3
+execute:
+  echo: false
+  warning: false
+---
+
+```{python}
+#| include: false
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+from scipy import stats
+
+ROOT = Path.cwd().parent if (Path.cwd().parent / "sportsdata").exists() else Path.cwd()
+sys.path.insert(0, str(ROOT))
+from sportsdata import statsbomb as sb
+from sportsdata.pitch import draw_pitch, use_style
+from sportsdata.report import tab, f0, f1, pc
+
+use_style()
+M = sb.matches()
+EV = sb.all_events()
+FR = sb.all_frames()
+VA = sb.all_visible_areas()
+
+STAGE = {"Group Stage": "조별 리그", "Round of 16": "16강", "Quarter-finals": "8강",
+         "Semi-finals": "4강", "3rd Place Final": "3위 결정전", "Final": "결승"}
+EV = EV.merge(M[["match_id", "competition_stage_name"]], on="match_id")
+HAS = set(VA["event_uuid"])
+EV["has_frame"] = EV["id"].isin(HAS)
+n_match, n_event = len(M), len(EV)
+```
+
+> 데이터: StatsBomb 공개 데이터(<https://github.com/statsbomb/open-data>). 이용 약관에 따라 데이터는 이 저장소에 싣지 않는다.
+
+이 장은 뒤의 모든 장이 쓰는 데이터를 다룬다. 2022년 카타르 월드컵의 경기 영상에서 무엇을 어떻게 기록했는지, 그 기록이 어떤 표가 되는지, 좌표를 어떻게 읽는지를 본다. 데이터를 설명하는 장이지만 방법이 넷 들어 있다. 첫째는 여러 겹으로 겹친 기록을 분석용 표로 펴는 법(정돈된 표, 열쇠, 분석 단위), 둘째는 좌표를 다루는 법(반전, 단위의 환산, 거리와 각도), 셋째는 화면에 잡히지 않은 선수를 결측으로 다루는 법(보인 영역, 결측의 기제), 넷째는 사람이 기록한 값의 오차를 점검하는 법(해상도, 끝자리 선호, 내적 일관성, 관측자 간 일치도)이다. 넷 모두 뒤 장의 모형이 무엇을 관측값으로 삼는지를 정한다.
+
+데이터는 StatsBomb 공개 데이터 가운데 2022년 남자 월드컵의 경기 파일(`matches`), 사건 파일(`events`), 프리즈 프레임 파일(`three-sixty`)이다. 받는 스크립트는 `scripts/fetch_statsbomb.py`이고, 읽는 함수는 `sportsdata/statsbomb.py`에 있다. 파일의 형식은 StatsBomb의 명세서 두 편(StatsBomb, 2019; StatsBomb, 2021)을 따랐다.
+
+## I. 영상에서 표까지
+
+### 1. 경기를 기록하는 세 가지 방식
+
+축구 경기의 데이터는 기록하는 대상에 따라 셋으로 나뉜다. 사건 데이터(event data)는 공에 일어난 일을 기록한다. 패스, 슛, 태클 같은 사건마다 언제, 어디서, 누가 했고 결과가 무엇이었는지를 한 줄로 적는다. 훈련된 기록원이 경기 영상을 보면서 입력하는 것이 일반적이며, 공개된 사건 데이터의 수집 절차는 Pappalardo et al. (2019)에 자세히 적혀 있다. 추적 데이터(tracking data)는 선수 22명과 공의 위치를 초당 수십 번 기록한다. 경기장에 설치한 전용 카메라나 중계 영상에서 컴퓨터 비전으로 위치를 추출한다. 자세 데이터는 선수의 관절 위치까지 기록한다. 사건 데이터는 공을 가진 선수만 알려 주고 나머지 21명이 어디 있었는지는 알려 주지 않는다. 추적 데이터는 모든 선수의 위치를 알려 주지만 그 순간에 무슨 일이 일어났는지는 따로 적혀 있지 않다.
+
+이 장의 데이터는 사건 데이터와 그 중간 형식 하나다. StatsBomb은 사건마다 그 순간의 중계 화면에 잡힌 선수들의 위치를 함께 기록해 360 데이터라는 이름으로 낸다. 화면 한 장면을 멈춰 선수의 위치를 찍은 것이어서 프리즈 프레임(freeze frame)이라 부른다. 사건 데이터에 없는 다른 선수의 위치가 들어 있지만, 연속된 궤적이 아니라 사건 순간의 한 장면이고 화면에 잡힌 선수만 들어 있다. 추적 데이터는 운동학 1장에서 다룬다.
+
+### 2. 대회와 파일
+
+2022년 월드컵은 `{python} M["match_date"].min()`부터 `{python} M["match_date"].max()`까지 32개 나라가 `{python} f0(n_match)`경기를 치렀다. 조별 리그는 4개 나라씩 8개 조가 조 안에서 한 번씩 만나 48경기이고, 조 1위와 2위가 올라가는 16강부터는 지면 탈락한다. 16강부터는 90분에 승부가 나지 않으면 연장전 30분을 하고, 그래도 같으면 승부차기를 한다.
+
+표 1은 대회의 단계별로 경기와 사건의 수를 센 것이다. 사건은 사건 파일의 한 줄이고, 프리즈 프레임이 있는 사건은 그 사건의 ID가 프리즈 프레임 파일에도 있는 것이다. 마지막 열은 경기 하나의 평균 사건 수다.
+
+```{python}
+#| output: asis
+t1 = (EV.groupby("competition_stage_name")
+        .agg(경기=("match_id", "nunique"), 사건=("id", "size"), 프레임=("has_frame", "sum")).reset_index())
+t1["order"] = t1["competition_stage_name"].map(list(STAGE).index)
+t1 = t1.sort_values("order").drop(columns="order")
+t1["competition_stage_name"] = t1["competition_stage_name"].map(STAGE)
+tot = pd.DataFrame([{"competition_stage_name": "전체", "경기": t1["경기"].sum(), "사건": t1["사건"].sum(), "프레임": t1["프레임"].sum()}])
+t1 = pd.concat([t1, tot], ignore_index=True)
+t1["경기당 사건"] = t1["사건"] / t1["경기"]
+t1.columns = ["단계", "경기", "사건", "프리즈 프레임이 있는 사건", "경기당 사건"]
+tab(t1, "표 1. 대회 단계별 경기와 사건", 0)
+per_match = EV.groupby("match_id").size()
+ko = t1[t1["단계"] != "조별 리그"].iloc[:-1]
+ko_mean = ko["사건"].sum() / ko["경기"].sum()
+gs_mean = t1.loc[t1["단계"] == "조별 리그", "경기당 사건"].iloc[0]
+```
+
+표 1에서 경기 하나는 평균 `{python} f0(per_match.mean())`개의 사건으로 기록되어 있고, 가장 적은 경기가 `{python} f0(per_match.min())`개, 가장 많은 경기가 `{python} f0(per_match.max())`개다. 16강 이후의 경기는 평균 `{python} f0(ko_mean)`개로 조별 리그의 `{python} f0(gs_mean)`개보다 많은데, 연장전까지 간 경기가 들어 있기 때문이다. 사건 `{python} f0(n_event)`개 가운데 `{python} pc(EV["has_frame"].mean(), 0)`%에 프리즈 프레임이 있다. 경기가 64개뿐이라는 점은 이 책 전체의 조건이다. 사건을 단위로 하는 분석은 표본이 수만에서 수십만이지만, 경기나 팀을 단위로 하는 분석은 표본이 64개와 32개다.
+
+## II. 사건 표
+
+### 1. 겹친 기록을 표로 편다
+
+사건 파일은 JSON 형식이고 경기 하나에 파일 하나다. 파일은 사건의 목록이고, 사건 하나는 항목 이름과 값의 묶음이다. 값이 다시 묶음이거나 목록일 수 있어 기록이 여러 겹으로 겹친다. 다음은 결승전의 사건 하나를 파일에 적힌 그대로 옮긴 것이다.
+
+```{python}
+#| output: asis
+FINAL = int(M.loc[M["competition_stage_name"] == "Final", "match_id"].iloc[0])
+raw = sb.raw_events(FINAL)
+one = next(e for e in raw if e["type"]["name"] == "Pass" and e["minute"] >= 20 and "outcome" not in e["pass"])
+print("```json")
+print(json.dumps(one, ensure_ascii=False, indent=1))
+print("```")
+```
+
+이 기록에서 `type`, `team`, `player`, `position`은 ID와 이름의 묶음이고, `location`은 좌표 두 개의 목록이며, `pass`는 패스에만 있는 항목들의 묶음이다. `pass` 안의 `recipient`는 다시 묶음이다. 통계 분석은 행이 관측이고 열이 변수인 표를 요구하므로, 이 기록을 표로 바꾸어야 한다. Wickham (2014)은 그 기준을 정돈된 표(tidy data)라는 이름으로 정리했다. 변수 하나가 열 하나, 관측 하나가 행 하나, 관측 단위의 종류 하나가 표 하나라는 세 조건이다.
+
+세 조건을 사건 파일에 적용하면 다음과 같다. 묶음은 안쪽 이름을 바깥 이름에 밑줄로 이어 열로 편다. `pass` 안의 `recipient` 안의 `name`은 `pass_recipient_name` 열이 된다. 길이가 정해진 목록인 `location`은 `x`와 `y` 두 열로 나눈다. 길이가 정해지지 않은 목록은 열로 펼 수 없으므로 다른 표로 내보낸다. 슛에 딸린 선수 위치의 목록이나 프리즈 프레임이 여기 해당하며, 그 표는 선수 한 명이 한 행이고 사건의 ID를 열쇠(key)로 사건 표와 이어진다. 관측 단위가 사건에서 선수 위치로 바뀌었으므로 표를 따로 두는 것이 셋째 조건에 맞는다.
+
+```{python}
+#| include: false
+meta = {"match_id", "competition_stage_name", "has_frame"}
+cols = [c for c in EV.columns if c not in meta]
+empty_share = EV[cols].isna().to_numpy().mean()
+```
+
+이렇게 편 사건 표는 `{python} f0(n_event)`행, `{python} f0(len(cols))`열이다. 열의 대부분은 특정한 유형의 사건에만 값이 있다. `pass_`로 시작하는 열은 패스에만, `shot_`으로 시작하는 열은 슛에만 값이 있고 나머지 행에서는 비어 있다. 표 전체에서 비어 있는 값의 비율은 `{python} pc(empty_share, 0)`%다. 이 빈 값은 측정하지 못한 결측이 아니라 해당 사항이 없다는 뜻이다. 두 가지를 구분하지 않고 결측 처리 함수에 넘기면 안 된다. 분석할 때는 사건의 유형으로 행을 먼저 고르고, 그 유형에 해당하는 열만 쓴다.
+
+### 2. 사건의 유형
+
+표 2는 사건을 유형별로 센 것이다. 수가 많은 10개 유형과 슛을 따로 적고 나머지를 한 행으로 모았다. 위치 열은 그 유형의 사건에 좌표가 있는지를, 프레임 열은 프리즈 프레임이 있는 사건의 비율을 나타낸다.
+
+```{python}
+#| output: asis
+DESC = {"Pass": "패스", "Ball Receipt*": "패스를 받음(받지 못한 것도 포함)", "Carry": "공을 가지고 이동",
+        "Pressure": "공을 가진 상대를 압박", "Ball Recovery": "주인 없는 공을 차지", "Duel": "상대와의 경합",
+        "Clearance": "공을 걷어 냄", "Block": "공의 진로를 막음", "Dribble": "상대를 제치려는 시도",
+        "Goal Keeper": "골키퍼의 동작", "Shot": "슛"}
+g = EV.groupby("type_name").agg(사건=("id", "size"), loc=("x", lambda s: s.notna().mean()), fr=("has_frame", "mean"))
+top = list(g["사건"].sort_values(ascending=False).index[:10])
+keep = top + [t for t in ["Shot"] if t not in top]
+rest = g.drop(index=keep)
+rows = [{"유형": t, "내용": DESC.get(t, ""), "사건": int(g.loc[t, "사건"]), "비율(%)": 100 * g.loc[t, "사건"] / n_event,
+         "위치": "있음" if g.loc[t, "loc"] == 1 else "없음", "프레임(%)": 100 * g.loc[t, "fr"]} for t in keep]
+rest_mask = EV["type_name"].isin(rest.index)
+rows.append({"유형": f"그 밖의 {len(rest)}개 유형", "내용": "", "사건": int(rest["사건"].sum()),
+             "비율(%)": 100 * rest["사건"].sum() / n_event, "위치": "섞여 있음", "프레임(%)": 100 * EV.loc[rest_mask, "has_frame"].mean()})
+tab(pd.DataFrame(rows), "표 2. 사건의 유형", [0, 0, 0, 1, 0, 0])
+share3 = g.loc[["Pass", "Ball Receipt*", "Carry"], "사건"].sum() / n_event
+n_type = EV["type_name"].nunique()
+no_loc = g.index[g["loc"] == 0]
+```
+
+표 2에서 사건의 유형은 모두 `{python} f0(n_type)`개이고, 패스와 패스를 받는 사건, 공을 가지고 이동하는 사건의 세 유형이 전체의 `{python} pc(share3, 0)`%다. 사건 데이터의 대부분은 공이 선수에서 선수로 옮겨 가는 과정의 기록이다. 슛은 `{python} f0(g.loc["Shot", "사건"])`개로 전체의 `{python} pc(g.loc["Shot", "사건"] / n_event, 1)`%에 지나지 않는다. 득점을 직접 다루는 분석(회귀 1장과 2장)은 표본이 작고, 패스와 이동을 다루는 분석(연쇄 1장과 2장)은 표본이 크다. 좌표가 없는 유형은 `{python} f0(len(no_loc))`개로, 전반 시작과 종료, 교체, 전술 변경, 부상으로 인한 중단처럼 경기장의 한 지점에서 일어났다고 할 수 없는 사건이다.
+
+수가 둘째와 셋째로 많은 `Ball Receipt*`와 `Carry`는 기록원이 따로 관측해 입력한 사건이 아니라 앞뒤의 사건에서 만들어 낸 사건으로 보인다. 이 점은 V.1절에서 데이터로 점검한다. `Pressure`는 공을 가진 상대에게 다가가 압박한 것을 기록한 사건으로, 공에 닿지 않아도 기록되는 드문 유형이다.
+
+### 3. 시간
+
+사건의 시각은 세 열로 적혀 있다. `period`는 경기의 구간으로 1이 전반, 2가 후반, 3과 4가 연장 전반과 후반, 5가 승부차기다. `timestamp`는 그 구간이 시작된 뒤 흐른 시간을 1,000분의 1초까지 적은 것이고 구간마다 0에서 다시 시작한다. `minute`와 `second`는 중계 화면의 시계에 해당하며, 후반은 45분, 연장 전반은 90분에서 시작한다.
+
+표 3은 구간별로 그 구간이 있었던 경기의 수, 사건의 수, 구간의 평균 길이와 가장 긴 길이를 적은 것이다. 구간의 길이는 그 구간의 마지막 사건의 `timestamp`다.
+
+```{python}
+#| output: asis
+EV["t"] = pd.to_timedelta(EV["timestamp"]).dt.total_seconds()
+plen = EV.groupby(["match_id", "period"])["t"].max().reset_index()
+t3 = (EV.groupby("period").agg(경기=("match_id", "nunique"), 사건=("id", "size")).reset_index()
+        .merge(plen.groupby("period")["t"].agg(["mean", "max"]).reset_index(), on="period"))
+t3["mean"] /= 60; t3["max"] /= 60
+t3["period"] = t3["period"].map({1: "1 전반", 2: "2 후반", 3: "3 연장 전반", 4: "4 연장 후반", 5: "5 승부차기"})
+t3.columns = ["구간", "경기", "사건", "평균 길이(분)", "가장 긴 길이(분)"]
+tab(t3, "표 3. 구간별 경기, 사건, 구간의 길이", [0, 0, 0, 1, 1])
+len1 = plen.loc[plen["period"] == 1, "t"].mean() / 60
+len2 = plen.loc[plen["period"] == 2, "t"].mean() / 60
+n_et = int(t3.loc[t3["구간"] == "3 연장 전반", "경기"].iloc[0])
+n_so = int(t3.loc[t3["구간"] == "5 승부차기", "경기"].iloc[0])
+so_text = "모두" if n_so == n_et else f"그 가운데 {n_so}개가"
+over45 = int(((EV["period"] == 1) & (EV["minute"] >= 45)).sum())
+```
+
+표 3에서 전반은 평균 `{python} f1(len1)`분, 후반은 평균 `{python} f1(len2)`분으로 규정의 45분보다 길다. 추가 시간이 붙기 때문이다. 연장전까지 간 경기는 `{python} f0(n_et)`개이고 `{python} so_text` 승부차기까지 갔다. 전반이 45분을 넘기 때문에 `minute`만으로는 시각을 정할 수 없다. 전반의 추가 시간에 일어난 사건 `{python} f0(over45)`개는 `minute`가 45 이상이어서 후반 초반의 사건과 값이 겹친다. 사건의 순서와 시각은 `period`와 `timestamp`의 쌍으로 정하고, 경기 안의 순서만 필요하면 사건의 일련번호인 `index`를 쓴다. 승부차기의 슛은 경기 중의 슛과 성격이 다르므로 이 책의 분석은 `period`가 4 이하인 사건만 쓴다.
+
+### 4. 분석 단위
+
+사건 표의 한 행은 사건이지만, 사건은 여러 단위에 겹쳐 속해 있다. 사건은 한 선수가 한 것이고, 그 선수는 한 팀에 속하며, 그 팀은 한 경기를 치른다. 이 사이에 점유(possession)라는 단위가 하나 더 있다. 점유는 한 팀이 공을 계속 가지고 있는 동안의 사건의 묶음으로, 사건 표의 `possession` 열이 경기 안에서 몇 번째 점유인지를 나타낸다. 상대가 공을 빼앗으면 번호가 바뀌고, 공이 경기장 밖으로 나갔다가 같은 팀의 스로인으로 경기가 다시 시작되어도 번호가 바뀐다(StatsBomb, 2019).
+
+표 4는 단위별 개수다. 팀·경기는 한 팀의 한 경기이고, 선수·경기는 한 선수의 한 경기 출전이다. 선수·경기는 사건을 하나라도 기록한 선수만 세었다. 마지막 열은 그 단위 하나에 속한 사건의 평균 수다.
+
+```{python}
+#| output: asis
+E4 = EV[EV["period"] <= 4]
+units = [
+    ("경기", E4["match_id"].nunique()),
+    ("팀", E4["team_id"].nunique()),
+    ("선수", E4["player_id"].nunique()),
+    ("팀·경기", len(E4[["match_id", "team_id"]].drop_duplicates())),
+    ("선수·경기", len(E4[["match_id", "player_id"]].dropna().drop_duplicates())),
+    ("점유", len(E4[["match_id", "possession"]].drop_duplicates())),
+    ("사건", len(E4)),
+]
+t4 = pd.DataFrame(units, columns=["단위", "개수"])
+t4["단위 하나의 평균 사건 수"] = len(E4) / t4["개수"]
+tab(t4, "표 4. 분석 단위별 개수 (승부차기 제외)", [0, 0, 1])
+u = dict(units)
+pp = E4.groupby("player_id").size()
+```
+
+표 4에서 점유는 `{python} f0(u["점유"])`개이고 하나가 평균 `{python} f1(u["사건"] / u["점유"])`개의 사건으로 되어 있다. 선수는 `{python} f0(u["선수"])`명이며 선수마다 기록된 사건의 수는 크게 다르다. 중앙값이 `{python} f0(pp.median())`개이고 가장 많은 선수가 `{python} f0(pp.max())`개다. 탈락한 팀의 선수는 3경기만 뛰었고 결승에 오른 팀의 선수는 7경기를 뛰었기 때문이다.
+
+분석 단위는 질문이 정한다. 슛 하나가 골이 될 확률을 물으면 슛이 단위이고(회귀 1장), 한 팀이 한 경기에서 넣는 골의 수를 물으면 팀·경기가 단위다(회귀 2장). 점유가 골로 끝날 확률을 물으면 점유가 단위다(연쇄 1장). 어느 단위를 택하든 그 아래의 관측은 서로 독립이 아니다. 같은 선수의 패스는 그 선수의 기량을 공유하고, 같은 경기의 사건은 그 경기의 상대와 점수 상황을 공유한다. 사건 23만여 개를 독립인 관측 23만여 개로 다루면 표준오차가 지나치게 작게 나온다. 다층 모형 1장이 이 의존을 다룬다.
+
+## III. 좌표
+
+### 1. 좌표계
+
+사건의 위치는 가로 120, 세로 80의 좌표로 적혀 있다. 그림 1은 명세서의 좌표계를 그린 것이다. 원점 $(0, 0)$은 왼쪽 위 모서리이고 $x$는 오른쪽으로, $y$는 아래쪽으로 커진다. 골대는 $x = 0$과 $x = 120$의 골라인에서 $y$가 36과 44 사이이고, 페널티 구역은 골라인에서 18까지, $y$가 18과 62 사이다. 페널티 마크는 $(12, 40)$과 $(108, 40)$, 경기장의 중심은 $(60, 40)$이다.
+
+```{python}
+#| label: fig1-coordinates
+#| fig-cap: "**그림 1. 사건 데이터의 좌표계**"
+fig, ax = plt.subplots(figsize=(6.2, 4.3))
+draw_pitch(ax)
+pts = [(0, 0, "left", "bottom"), (120, 0, "right", "bottom"), (0, 80, "left", "top"), (120, 80, "right", "top"),
+       (60, 50, "left", "top"), (108, 40, "center", "top"), (102, 18, "right", "bottom"), (102, 62, "right", "top"),
+       (120, 36, "left", "center"), (120, 44, "left", "center")]
+for x, y, ha, va in pts:
+    dx = {"left": 1.2, "right": -1.2, "center": 0}[ha]
+    dy = {"bottom": -1.0, "top": 1.2, "center": 0}[va]
+    name = "(60, 40)" if (x, y) == (60, 50) else f"({x}, {y})"
+    ax.text(x + dx + (2.5 if x == 120 and va == "center" else 0), y + dy, name, ha=ha, va=va, fontsize=6.5)
+ax.annotate("", xy=(52, 72), xytext=(22, 72), arrowprops=dict(arrowstyle="->", lw=0.8))
+ax.text(37, 70.5, "공격 방향", ha="center", va="bottom", fontsize=7)
+ax.annotate("", xy=(30, -1.2), xytext=(8, -1.2), arrowprops=dict(arrowstyle="->", lw=0.6), annotation_clip=False)
+ax.text(31, -1.2, "x", ha="left", va="center", fontsize=7, style="italic")
+ax.annotate("", xy=(-1.8, 22), xytext=(-1.8, 6), arrowprops=dict(arrowstyle="->", lw=0.6), annotation_clip=False)
+ax.text(-1.8, 23.5, "y", ha="center", va="top", fontsize=7, style="italic")
+ax.set_xlim(-5, 131); ax.set_ylim(84, -5)
+plt.show()
+```
+
+그림 1에서 주의할 점은 $y$축의 방향이다. 수학의 좌표평면과 반대로 $y$가 아래로 커진다. 화면의 화소를 세는 방식을 따랐기 때문이며, 영상에서 온 좌표는 대개 이렇다. 그림을 그릴 때 $y$축의 방향을 반대로 두지 않으면 경기장의 좌우가 바뀐 그림이 나온다. 이 책의 경기장 그림은 모두 `sportsdata/pitch.py`의 `draw_pitch`가 $y$축을 아래로 커지게 두고 그린다.
+
+### 2. 공격 방향과 반전
+
+실제 경기에서 두 팀은 서로 반대 방향으로 공격하고 전반과 후반에 방향을 바꾼다. 사건 데이터는 이것을 그대로 적지 않는다. 사건을 한 팀이 언제나 $x$가 커지는 쪽으로 공격하도록 좌표를 정규화해 둔다. 어느 팀의 어느 구간의 사건이든 자기 골대는 $x = 0$에, 상대 골대는 $x = 120$에 있다. 이 방식에서는 슛의 위치를 팀과 구간에 관계없이 바로 비교할 수 있다.
+
+표 5는 이 규칙을 데이터로 확인한 것이다. 규칙이 맞다면 골키퍼의 동작은 $x$가 0에 가깝고, 슛은 $x$가 120에 가까워야 한다. 또 $y$가 아래로 커지므로 공격 방향을 바라볼 때 왼쪽이 $y$가 작은 쪽이어서, 왼쪽 수비수의 사건은 $y$가 작고 오른쪽 수비수의 사건은 $y$가 커야 한다. 평균과 함께 팀·경기별 평균의 최솟값과 최댓값을 적었다. 규칙이 한 경기에서라도 어긋나면 그 범위가 경기장의 반대쪽에 걸친다.
+
+```{python}
+#| output: asis
+def check(mask, col, label):
+    s = E4.loc[mask]
+    by = s.groupby(["match_id", "team_id"])[col].mean()
+    return {"사건": label, "좌표": col, "사건 수": len(s), "평균": s[col].mean(), "팀·경기 평균의 최소": by.min(), "팀·경기 평균의 최대": by.max()}
+t5 = pd.DataFrame([
+    check(E4["type_name"] == "Goal Keeper", "x", "골키퍼의 동작"),
+    check(E4["type_name"] == "Shot", "x", "슛"),
+    check(E4["position_name"] == "Left Back", "y", "왼쪽 수비수의 모든 사건"),
+    check(E4["position_name"] == "Right Back", "y", "오른쪽 수비수의 모든 사건"),
+])
+tab(t5, "표 5. 공격 방향과 좌우의 확인", [0, 0, 0, 1, 1, 1])
+```
+
+```{python}
+#| include: false
+fc = E4.loc[E4["type_name"] == "Foul Committed", ["id", "x", "y", "related_events"]].explode("related_events")
+fw = E4.loc[E4["type_name"] == "Foul Won", ["id", "x", "y"]]
+pair = fc.merge(fw, left_on="related_events", right_on="id", suffixes=("_c", "_w"))
+d_raw = np.hypot(pair["x_c"] - pair["x_w"], pair["y_c"] - pair["y_w"])
+d_flip = np.hypot(120 - pair["x_c"] - pair["x_w"], 80 - pair["y_c"] - pair["y_w"])
+pen = E4[(E4["type_name"] == "Shot") & (E4["shot_type_name"] == "Penalty")]
+kick = E4[(E4["type_name"] == "Pass") & (E4["pass_type_name"] == "Kick Off")]
+Y = sb.YARD
+```
+
+표 5에서 네 행 모두 팀·경기별 평균의 범위가 경기장의 한쪽에만 있다. 골키퍼의 동작은 어느 팀의 어느 경기에서나 평균 $x$가 `{python} f1(t5.loc[0, "팀·경기 평균의 최대"])` 이하이고, 왼쪽 수비수는 평균 $y$가 40보다 작으며 오른쪽 수비수는 40보다 크다. 좌표는 팀마다 자기 공격 방향을 기준으로 적혀 있다.
+
+이 정규화의 대가는 두 팀의 좌표가 서로 다른 기준을 쓴다는 것이다. 같은 지점이 두 팀의 좌표로는 다르게 적힌다. 두 팀의 사건을 한 경기장에 함께 놓으려면 한 팀의 좌표를 경기장의 중심에 대해 반전한다.
+
+$$x' = 120 - x, \qquad y' = 80 - y$$
+
+$x$만 반전하면 안 된다. 방향을 돌려 바라보면 좌우도 바뀌기 때문이다. 반칙으로 확인할 수 있다. 반칙은 반칙한 선수의 사건(`Foul Committed`)과 반칙당한 선수의 사건(`Foul Won`)으로 두 번 기록되고, 두 사건은 서로를 `related_events`로 가리킨다. 두 사건은 같은 자리에서 일어났으므로 같은 지점이어야 한다. 짝이 맞는 반칙 `{python} f0(len(pair))`쌍에서 두 좌표 사이의 거리는 그대로 계산하면 중앙값이 `{python} f1(d_raw.median())`이고, 한쪽을 반전한 뒤 계산하면 중앙값이 `{python} f1(d_flip.median(), 2)`이다. 반전한 뒤의 거리가 1 이하인 쌍은 `{python} pc((d_flip <= 1).mean(), 1)`%다.
+
+### 3. 단위와 실제 길이
+
+명세서는 좌표의 단위를 따로 정의하지 않는다. 다만 역습을 정의하는 대목에서 거리를 야드로 적고 있고(StatsBomb, 2019), 그림 1의 선의 위치도 같은 것을 말한다. 경기 규칙은 경기장의 선을 야드에서 온 길이로 정한다(IFAB, 2022). 페널티 구역은 골대 기둥에서 양옆으로 16.5m, 골라인에서 16.5m이고 이것은 18야드다. 페널티 마크는 골라인에서 11m로 12야드, 골대의 너비는 7.32m로 8야드, 중앙 원의 반지름은 9.15m로 10야드다. 좌표계에서 이 값들은 18, 12, 8, 10이다. 좌표의 1단위는 선을 기준으로 1야드(0.9144m)다. 데이터도 이 해석과 맞는다. 경기 중의 페널티킥 `{python} f0(len(pen))`개의 위치는 평균 $x$가 `{python} f1(pen["x"].mean())`, 평균 $y$가 `{python} f1(pen["y"].mean())`이고, 킥오프 `{python} f0(len(kick))`개의 $x$는 `{python} f1(kick["x"].min())`에서 `{python} f1(kick["x"].max())` 사이다. 기록원은 사건의 위치를 경기장의 선에 맞추어 입력한다.
+
+그런데 경기장 전체의 크기는 야드로 맞지 않는다. 좌표계의 경기장은 120야드와 80야드, 곧 109.7m와 73.2m다. 경기 규칙은 국제 경기의 경기장을 길이 100\~110m, 너비 64\~75m로 정하고(IFAB, 2022), 이 대회의 경기장은 모두 105m와 68m였다. 야드로는 114.8과 74.4다. 좌표계의 경기장이 실제보다 길이로 4.5%, 너비로 7.6% 크다. 선의 위치와 경기장의 크기를 모두 실제와 맞추는 1차식은 없으므로, 기록된 좌표는 경기장의 어느 부분에서는 실제 길이와 어긋난다. 어느 부분에서 얼마나 어긋나는지는 명세서로 확인하지 못했다.
+
+두 가지 읽는 법을 비교하면 어긋남의 크기를 알 수 있다. 하나는 좌표를 어디서나 야드로 읽는 것이고, 다른 하나는 좌표가 경기장 전체를 비례로 줄인 것이라고 읽는 것이다. 뒤의 방식에서 $x$의 1단위는 $105 / 120 = 0.875$m, $y$의 1단위는 $68 / 80 = 0.85$m다. 좌표로 $(d_x, d_y)$만큼 떨어진 두 지점의 거리는 다음과 같다.
+
+$$D_{\text{야드}} = 0.9144 \sqrt{d_x^2 + d_y^2}, \qquad D_{\text{비례}} = \sqrt{(0.875\ d_x)^2 + (0.85\ d_y)^2}$$
+
+페널티 마크에서 골라인까지는 $d_x = 12$이므로 야드로 읽으면 `{python} f1(12 * Y, 2)`m, 비례로 읽으면 `{python} f1(12 * 0.875, 2)`m다. 실제는 11m이므로 골대 근처에서는 야드로 읽는 것이 맞다. 경기장의 중심에서 골라인까지는 $d_x = 60$이므로 야드로 읽으면 `{python} f1(60 * Y, 1)`m, 비례로 읽으면 `{python} f1(60 * 0.875, 1)`m다. 실제는 52.5m이므로 경기장 전체로는 비례로 읽는 것이 맞다. 이 책은 좌표의 1단위를 1야드로 읽는다. 슛처럼 골대 근처의 거리가 중요한 분석에서 이 해석이 정확하기 때문이다. 경기장을 가로지르는 긴 거리는 이 해석에서 최대 4.5\~7.6% 크게 나올 수 있다. 본문에서 길이를 미터로 적을 때는 이 환산을 쓴 것이다.
+
+### 4. 거리와 각도
+
+좌표에서 가장 자주 계산하는 두 값은 골대까지의 거리와 골대가 보이는 각도다. 위치 $(x, y)$에서 골대의 중심 $(120, 40)$까지의 거리는 다음과 같다.
+
+$$d = \sqrt{(120 - x)^2 + (y - 40)^2}$$
+
+골대가 보이는 각도 $\theta$는 그 위치에서 두 골대 기둥 $(120, 36)$과 $(120, 44)$를 바라보는 두 방향 사이의 각이다. 골라인까지의 거리를 $a = 120 - x$, 골대 중심선에서 옆으로 벗어난 거리를 $b = y - 40$, 골대 너비의 절반을 $w = 4$라 하면, 두 기둥을 향한 벡터 $(a, -w - b)$와 $(a, w - b)$의 내적과 외적에서 다음을 얻는다.
+
+$$\theta = \arctan \frac{2 w a}{a^2 + b^2 - w^2}$$
+
+분모가 음수이면 $\theta$에 $\pi$를 더한다. 두 기둥 사이를 지름으로 하는 원의 안쪽에서는 각이 직각보다 크기 때문이다. 코드에서는 분자와 분모를 따로 받아 사분면을 가리는 함수 `arctan2`를 쓰면 이 경우가 함께 처리된다. $\theta$는 골대 정면에서 가까울수록 크고, 골라인에 가까운 옆쪽에서는 거리가 가까워도 작다. 거리가 같은 두 위치의 득점 가능성이 다른 것을 이 각도가 설명한다.
+
+```{python}
+#| include: false
+S = E4[(E4["type_name"] == "Shot") & (E4["shot_type_name"] != "Penalty")].copy()
+a = 120 - S["x"]; b = S["y"] - 40
+S["dist"] = np.hypot(a, b) * Y
+S["angle"] = np.degrees(np.arctan2(8 * a, a**2 + b**2 - 16))
+S["goal"] = S["shot_outcome_name"] == "Goal"
+S["box"] = (S["x"] >= 102) & S["y"].between(18, 62)
+```
+
+그림 2는 페널티킥과 승부차기를 뺀 슛 `{python} f0(len(S))`개의 위치다. 공격하는 쪽의 절반만 그렸다. 골이 된 슛은 검은 점, 나머지는 빈 원이다.
+
+```{python}
+#| label: fig2-shots
+#| fig-cap: "**그림 2. 슛의 위치 (페널티킥과 승부차기 제외)**"
+fig, ax = plt.subplots(figsize=(4.6, 5.0))
+draw_pitch(ax, half=True)
+miss = S[~S["goal"]]; hit = S[S["goal"]]
+ax.scatter(miss["x"], miss["y"], s=9, facecolors="none", edgecolors="0.55", linewidths=0.5, label="골이 아닌 슛")
+ax.scatter(hit["x"], hit["y"], s=11, color="black", linewidths=0, label="골", zorder=3)
+ax.legend(loc="upper left", bbox_to_anchor=(0.08, 0.97), fontsize=7, handletextpad=0.2)
+plt.show()
+```
+
+그림 2에서 슛은 페널티 구역 안과 그 바로 앞에 몰려 있고, 골은 골대 정면의 좁은 범위에 몰려 있다. 슛 `{python} f0(len(S))`개 가운데 `{python} f0(S["goal"].sum())`개(`{python} pc(S["goal"].mean())`%)가 골이 되었다. 골대까지의 거리는 중앙값이 `{python} f1(S["dist"].median())`m이고, 골이 된 슛은 `{python} f1(S.loc[S["goal"], "dist"].median())`m, 골이 되지 않은 슛은 `{python} f1(S.loc[~S["goal"], "dist"].median())`m다. 골대가 보이는 각도의 중앙값은 골이 된 슛이 `{python} f1(S.loc[S["goal"], "angle"].median(), 0)`도, 되지 않은 슛이 `{python} f1(S.loc[~S["goal"], "angle"].median(), 0)`도다. 페널티 구역 안에서 찬 슛은 `{python} pc(S["box"].mean(), 0)`%이고 그 가운데 `{python} pc(S.loc[S["box"], "goal"].mean())`%가 골이 되었으며, 구역 밖에서 찬 슛은 `{python} pc(S.loc[~S["box"], "goal"].mean())`%가 골이 되었다. 회귀 1장은 거리와 각도를 설명변수로 삼아 슛이 골이 될 확률을 로지스틱 회귀로 추정한다.
+
+### 5. 해상도와 끝자리
+
+기록된 좌표는 소수 첫째 자리까지 있다. 좌표의 해상도는 0.1단위, 곧 9cm쯤이다. 연속인 값을 간격 $\Delta$로 반올림하면 반올림 오차는 $-\Delta/2$와 $\Delta/2$ 사이에 고르게 분포한다고 볼 수 있고, 그 표준편차는 다음과 같다.
+
+$$\sigma_{\text{반올림}} = \frac{\Delta}{\sqrt{12}}$$
+
+$\Delta = 0.1$이면 `{python} f1(0.1 / 12**0.5, 3)`단위, 곧 `{python} f1(100 * Y * 0.1 / 12**0.5, 1)`cm다. 이 오차는 무시할 수 있다. 그러나 해상도가 9cm라는 것이 위치가 9cm까지 정확하다는 뜻은 아니다. 기록원이 화면을 보고 지점을 찍을 때의 오차가 훨씬 클 것이고, 그 크기는 이 데이터만으로 알 수 없다. 해상도는 정확도의 상한일 뿐이다.
+
+사람이 입력한 수치인지를 점검하는 고전적인 방법이 끝자리의 분포다. 측정이 충분히 세밀하고 사람이 끝자리를 고르지 않았다면 끝자리 0\~9는 각각 10%씩 나와야 한다. 사람이 값을 어림해 적으면 0이나 5 같은 끝자리가 많아진다. 이것을 끝자리 선호(digit preference)라 한다. 표 6은 좌표가 있는 사건 전체에서 $x$와 $y$의 소수 첫째 자리의 분포다.
+
+```{python}
+#| output: asis
+L = E4.dropna(subset=["x"])
+dig = {c: (L[c] * 10).round().astype(int) % 10 for c in ("x", "y")}
+cnt = {c: dig[c].value_counts().reindex(range(10), fill_value=0) for c in dig}
+t6 = pd.DataFrame({"끝자리": [str(i) for i in range(10)],
+                   "x(%)": 100 * cnt["x"].to_numpy() / len(L), "y(%)": 100 * cnt["y"].to_numpy() / len(L)})
+tab(t6, "표 6. 좌표의 소수 첫째 자리의 분포", 1)
+chi = {c: stats.chisquare(cnt[c].to_numpy()) for c in cnt}
+dev = {c: (100 * cnt[c] / len(L) - 10).abs().max() for c in cnt}
+edge = L["y"].isin([0.1, 80.0]) | L["x"].isin([0.1, 120.0])
+fixed = edge | ((L["type_name"] == "Pass") & (L["pass_type_name"] == "Kick Off")) | (L["shot_type_name"] == "Penalty")
+dev_in = {c: (100 * dig[c][~fixed].value_counts(normalize=True).reindex(range(10), fill_value=0) - 10).abs().max() for c in dig}
+```
+
+표 6에서 끝자리는 거의 고르게 분포한다. 10%에서 가장 멀리 벗어난 끝자리가 $x$에서 `{python} f1(dev["x"])`%포인트, $y$에서 `{python} f1(dev["y"])`%포인트다. 끝자리가 고르다는 가설의 카이제곱 통계량은 $x$가 `{python} f0(chi["x"].statistic)`, $y$가 `{python} f0(chi["y"].statistic)`이고(자유도 9), 두 경우 모두 가설은 기각된다. 여기서 검정의 결론과 차이의 크기를 구분해야 한다. 관측이 `{python} f0(len(L))`개이면 아주 작은 차이도 유의하게 나온다. 표본이 클 때는 검정의 $p$값이 아니라 차이의 크기를 읽는다. 조금 많은 끝자리는 0과 1이고, 이것은 위치가 정해진 사건에서 온다. 스로인과 코너킥처럼 경기장의 가장자리에서 일어난 사건은 좌표가 0.1, 80.0, 120.0으로 적혀 있고, 킥오프와 페널티킥은 정수 좌표에 놓인다. 이런 사건 `{python} f0(fixed.sum())`개를 빼면 10%에서 가장 멀리 벗어난 끝자리가 $x$에서 `{python} f1(dev_in["x"])`%포인트, $y$에서 `{python} f1(dev_in["y"])`%포인트다. 좌표를 어림해 적은 흔적은 없다.
+
+## IV. 프리즈 프레임
+
+### 1. 구조
+
+프리즈 프레임 파일은 사건 하나에 기록 하나이고, 기록마다 세 항목이 있다. `event_uuid`는 사건 표의 `id`와 맞는 열쇠다. `visible_area`는 그 순간 카메라에 보인 경기장의 영역을 다각형으로 적은 것이다. `freeze_frame`은 화면에 보인 선수의 목록이고, 선수마다 위치와 세 가지 표시가 있다. `teammate`는 사건을 한 선수와 같은 팀인지, `actor`는 사건을 한 선수 본인인지, `keeper`는 골키퍼인지를 나타낸다. 선수가 누구인지는 적혀 있지 않다. 좌표는 그 사건의 좌표와 같은 방향, 곧 사건을 한 선수의 팀이 오른쪽으로 공격하는 방향으로 적혀 있다(StatsBomb, 2021).
+
+II.1절의 기준에 따라 이 파일은 표 둘이 된다. 하나는 프레임 하나가 한 행인 표로 보인 영역을 담고, 다른 하나는 프레임 안의 선수 한 명이 한 행인 표로 위치와 표시를 담는다. 선수 위치의 표는 `{python} f0(len(FR))`행이고 프레임 `{python} f0(FR["event_uuid"].nunique())`개에 속한다.
+
+### 2. 보인 영역
+
+중계 카메라는 경기장의 일부만 비춘다. 보인 영역의 다각형은 꼭짓점의 좌표를 $x_1, y_1, x_2, y_2, \ldots$의 순서로 늘어놓은 목록이다. 꼭짓점이 $n$개인 다각형의 넓이는 꼭짓점의 좌표만으로 계산할 수 있다. $(x_{n+1}, y_{n+1}) = (x_1, y_1)$로 두면 넓이는 다음과 같고, 이것을 신발끈 공식이라 한다.
+
+$$A = \frac{1}{2} \left| \sum_{i=1}^{n} (x_i\ y_{i+1} - x_{i+1}\ y_i) \right|$$
+
+그림 3은 결승전에서 경기 중에 나온 첫 골의 프리즈 프레임이다. 회색으로 칠한 부분이 보인 영역이다. 검은 점은 슛한 선수의 팀, 빈 원은 상대 팀이고, 네모는 골키퍼, 세모는 슛한 선수다.
+
+```{python}
+#| label: fig3-freeze-frame
+#| fig-cap: "**그림 3. 프리즈 프레임의 예 (결승전, 경기 중의 첫 골)**"
+ex = E4[(E4["match_id"] == FINAL) & (E4["type_name"] == "Shot") & (E4["shot_outcome_name"] == "Goal")
+        & (E4["shot_type_name"] == "Open Play")].sort_values("index").iloc[0]
+ff = FR[FR["event_uuid"] == ex["id"]]
+va = VA[VA["event_uuid"] == ex["id"]].iloc[0]
+fig, ax = plt.subplots(figsize=(6.2, 4.2))
+ax.add_patch(Polygon(np.asarray(va["polygon"]).reshape(-1, 2), closed=True, facecolor="0.88", edgecolor="none", zorder=0))
+draw_pitch(ax)
+def dots(d, marker, filled, size=22, **kw):
+    ax.scatter(d["x"], d["y"], s=size, marker=marker, facecolors="black" if filled else "white",
+               edgecolors="black", linewidths=0.6, zorder=3, **kw)
+dots(ff[ff["teammate"] & ~ff["actor"] & ~ff["keeper"]], "o", True, label="같은 팀")
+dots(ff[~ff["teammate"] & ~ff["keeper"]], "o", False, label="상대 팀")
+dots(ff[ff["keeper"]], "s", False, label="골키퍼")
+dots(ff[ff["actor"]], "^", True, size=34, label="슛한 선수")
+ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.98), fontsize=7, handletextpad=0.2)
+plt.show()
+n_ex = len(ff)
+```
+
+```{python}
+#| include: false
+PITCH = sb.PITCH_X * sb.PITCH_Y
+VA["share"] = VA["area"] / PITCH
+no_area = VA["area"].isna().mean()
+npl = FR.groupby("event_uuid").size()
+```
+
+그림 3의 장면에서 보인 영역은 경기장의 `{python} pc(va["area"] / PITCH, 0)`%이고 선수는 `{python} f0(n_ex)`명이 보인다. 나머지 선수는 화면 밖에 있었다. 대회 전체에서 보인 영역은 평균적으로 경기장의 `{python} pc(VA["share"].mean(), 0)`%이고, 프레임의 절반은 `{python} pc(VA["share"].quantile(0.25), 0)`%에서 `{python} pc(VA["share"].quantile(0.75), 0)`% 사이다. 프레임 하나에 보이는 선수는 평균 `{python} f1(npl.mean())`명이고 22명이 모두 보이는 프레임은 `{python} f0((npl == 22).sum())`개뿐이다.
+
+### 3. 화면 밖의 선수는 결측이다
+
+프리즈 프레임에 없는 선수는 경기장에 없었던 것이 아니라 기록되지 않은 것이다. 이것은 결측이고, 결측이 분석에 미치는 영향은 결측이 왜 생겼는지에 달려 있다. Rubin (1976)의 분류에서 결측이 자료의 어떤 값과도 무관하면 완전 무작위 결측, 관측된 값에만 의존하면 무작위 결측, 관측되지 않은 값 자체에 의존하면 비무작위 결측이다. 프리즈 프레임의 결측은 셋째다. 선수가 기록되지 않는 이유가 그 선수의 위치, 곧 기록되지 않은 값 자체에 있다. 카메라는 공을 따라가므로 공에서 먼 선수일수록 화면 밖에 있다.
+
+표 7은 이 의존을 보여 준다. 사건의 위치를 $x$에 따라 자기 진영(0\~40), 중앙(40\~80), 상대 진영(80\~120)으로 나누고, 구역별로 프레임에 보이는 선수의 평균 수, 보인 영역의 평균 비율, 자기 팀 골키퍼와 상대 팀 골키퍼가 보이는 프레임의 비율을 적었다. 골키퍼는 위치가 거의 정해져 있어 결측이 위치에 의존하는지를 보기에 알맞다.
+
+```{python}
+#| output: asis
+fe = E4.loc[E4["has_frame"], ["id", "x"]].dropna()
+fe["zone"] = pd.cut(fe["x"], [0, 40, 80, 120], labels=["자기 진영 (0~40)", "중앙 (40~80)", "상대 진영 (80~120)"], include_lowest=True)
+own = set(FR.loc[FR["keeper"] & FR["teammate"], "event_uuid"])
+opp = set(FR.loc[FR["keeper"] & ~FR["teammate"], "event_uuid"])
+fe["n"] = fe["id"].map(npl)
+fe["share"] = fe["id"].map(VA.set_index("event_uuid")["share"])
+fe["own"] = fe["id"].isin(own); fe["opp"] = fe["id"].isin(opp)
+t7 = fe.groupby("zone", observed=True).agg(프레임=("id", "size"), n=("n", "mean"), share=("share", "mean"),
+                                           own=("own", "mean"), opp=("opp", "mean")).reset_index()
+t7[["share", "own", "opp"]] *= 100
+t7.columns = ["사건의 위치", "프레임", "보이는 선수(명)", "보인 영역(%)", "자기 골키퍼가 보임(%)", "상대 골키퍼가 보임(%)"]
+tab(t7, "표 7. 사건의 위치별 프리즈 프레임에 보이는 것", [0, 0, 1, 1, 1, 1])
+z = t7.set_index("사건의 위치")
+```
+
+표 7에서 골키퍼가 보이는지는 사건이 어디서 일어났는지에 거의 전적으로 달려 있다. 상대 골키퍼는 사건이 상대 진영에서 일어난 프레임의 `{python} f1(z.iloc[2, 4], 0)`%에서 보이지만, 중앙에서 일어난 프레임에서는 `{python} f1(z.iloc[1, 4], 0)`%, 자기 진영에서 일어난 프레임에서는 `{python} f1(z.iloc[0, 4], 0)`%에서만 보인다. 자기 팀 골키퍼는 그 반대다. 보이는 선수의 수도 구역에 따라 `{python} f1(z["보이는 선수(명)"].min())`명에서 `{python} f1(z["보이는 선수(명)"].max())`명까지 다르다.
+
+이 결과에서 프리즈 프레임을 쓰는 규칙이 나온다. 프레임에 보이는 선수의 수를 그대로 세어 비교하면 안 된다. 수비수가 몇 명 있었는지를 세면 실제 수비수의 수가 아니라 화면에 잡힌 수비수의 수가 나오고, 그 수는 카메라가 어디를 비추었는지에 따라 달라진다. 타당한 것은 보인 영역 안에서의 진술이다. 공 주변 몇 야드 안에 상대가 몇 명 있는지, 패스가 지나간 길에 상대가 있는지는 그 범위가 보인 영역 안에 들어 있으면 관측된 것으로 볼 수 있다. 공간 2장은 분석의 범위를 보인 영역으로 제한하는 방식으로 프리즈 프레임을 쓴다. 슛은 사정이 낫다. 슛의 프레임은 골대를 비추므로 슛과 골대 사이의 선수는 대부분 화면 안에 있다.
+
+### 4. 사건을 한 선수의 위치
+
+프리즈 프레임에는 사건을 한 선수의 위치가 들어 있고, 사건 표에도 그 사건의 위치가 있다. 두 좌표는 같은 것을 두 번 적은 것이므로 일치해야 한다. 이런 중복은 데이터의 일관성을 점검할 기회다. 표 8은 프레임에서 `actor`로 표시된 선수의 위치와 사건의 위치 사이의 거리가 1을 넘는 프레임의 비율을 사건의 유형별로 적은 것이다. 비율이 높은 유형부터 6개와 전체를 적었다.
+
+```{python}
+#| output: asis
+act = FR[FR["actor"]].merge(E4[["id", "x", "y", "type_name"]], left_on="event_uuid", right_on="id", suffixes=("_f", ""))
+act["d"] = np.hypot(act["x_f"] - act["x"], act["y_f"] - act["y"])
+act["off"] = act["d"] > 1
+by = act.groupby("type_name").agg(프레임=("off", "size"), 어긋남=("off", "mean")).sort_values("어긋남", ascending=False)
+t8 = by[by["프레임"] >= 100].head(6).reset_index()
+t8 = pd.concat([t8, pd.DataFrame([{"type_name": "전체", "프레임": len(act), "어긋남": act["off"].mean()}])], ignore_index=True)
+t8["어긋남"] *= 100
+t8.columns = ["유형", "프레임", "위치가 어긋난 프레임(%)"]
+tab(t8, "표 8. 사건을 한 선수의 위치가 사건의 위치와 어긋난 프레임", [0, 0, 1])
+paired = ["Dribbled Past", "Foul Won", "Dispossessed"]
+off_all = act["off"].mean()
+```
+
+표 8에서 전체 프레임의 `{python} pc(1 - off_all, 0)`%는 두 위치가 일치한다. 어긋남은 몇 유형에 몰려 있다. 제침을 당함(`Dribbled Past`), 반칙을 당함(`Foul Won`), 공을 빼앗김(`Dispossessed`)의 세 유형은 거의 모든 프레임에서 어긋난다. 경합(`Duel`)과 드리블(`Dribble`)도 절반 가까이 어긋난다. 이 유형들은 모두 상대 선수의 사건과 짝을 이루어 기록되는 사건이다. 프레임이 짝이 되는 상대 사건을 기준으로 기록된 것으로 보이지만 명세서로 확인하지는 못했다. 명세서는 일부 사건에 `actor` 표시가 없을 수 있다고만 적고 있다(StatsBomb, 2021). 이 책에서 프리즈 프레임을 쓸 때는 사건을 한 선수의 위치가 사건의 위치와 일치하는 프레임만 쓴다.
+
+## V. 기록의 일관성과 신뢰도
+
+### 1. 만들어 낸 사건
+
+II.2절에서 `Ball Receipt*`와 `Carry`가 앞뒤의 사건에서 만들어 낸 사건으로 보인다고 했다. 명세서는 `Carry`를 선수가 공을 발밑에 두고 움직이거나 서 있는 것이라고만 정의하고(StatsBomb, 2019), 어떻게 기록하는지는 적지 않는다. 데이터로 확인할 수 있다. 패스에는 패스가 끝난 위치(`pass_end_location`)가 있고, 그 패스를 받은 사건에는 받은 위치가 있다. 두 위치를 따로 관측해 입력했다면 입력할 때의 오차만큼 어긋나야 한다. `Carry`에는 시작한 위치와 끝난 위치(`carry_end_location`)가 있다. 이것도 따로 입력했다면 바로 앞 사건과 바로 뒤 사건의 위치와 조금씩 어긋나야 한다.
+
+```{python}
+#| include: false
+P = E4[E4["type_name"] == "Pass"].copy()
+pe = np.array(P["pass_end_location"].tolist())
+P["ex"], P["ey"] = pe[:, 0], pe[:, 1]
+R = E4.loc[E4["type_name"] == "Ball Receipt*", ["id", "x", "y", "ball_receipt_outcome_name"]]
+pr = P[["id", "related_events", "ex", "ey"]].explode("related_events").merge(R, left_on="related_events", right_on="id", suffixes=("", "_r"))
+pr["same"] = (pr["ex"] == pr["x"]) & (pr["ey"] == pr["y"])
+done = pr["ball_receipt_outcome_name"].isna()
+
+W = E4[E4["x"].notna()].sort_values(["match_id", "index"]).copy()
+for c in ("x", "y"):
+    W[f"prev_{c}"] = W.groupby(["match_id", "period"])[c].shift(1)
+    W[f"next_{c}"] = W.groupby(["match_id", "period"])[c].shift(-1)
+C = W[W["type_name"] == "Carry"].copy()
+ce = np.array(C["carry_end_location"].tolist())
+C["ex"], C["ey"] = ce[:, 0], ce[:, 1]
+c_start = ((C["x"] == C["prev_x"]) & (C["y"] == C["prev_y"])).mean()
+c_end = ((C["ex"] == C["next_x"]) & (C["ey"] == C["next_y"])).mean()
+c_len = np.hypot(C["ex"] - C["x"], C["ey"] - C["y"])
+```
+
+패스와 그것을 받은 사건의 짝은 `{python} f0(len(pr))`개다. 받는 데 성공한 `{python} f0(done.sum())`개 가운데 `{python} pc(pr.loc[done, "same"].mean(), 1)`%에서 두 위치는 소수 첫째 자리까지 같다. 받지 못한 것으로 기록된 `{python} f0((~done).sum())`개에서는 `{python} pc(pr.loc[~done, "same"].mean(), 1)`%가 같다. `Carry` `{python} f0(len(C))`개 가운데 시작한 위치가 같은 구간의 바로 앞 사건의 위치와 같은 것이 `{python} pc(c_start, 1)`%, 끝난 위치가 바로 뒤 사건의 위치와 같은 것이 `{python} pc(c_end, 1)`%다. 사람이 화면을 보고 두 번 찍은 좌표가 9cm 단위까지 이 비율로 일치할 수는 없다. 성공한 패스를 받은 위치는 패스가 끝난 위치를, `Carry`가 시작한 위치는 앞 사건의 위치를 옮겨 적은 값이고, `Carry`가 끝난 위치도 대부분 뒤 사건의 위치를 옮겨 적은 값이다. `Carry`의 이동 거리는 중앙값이 `{python} f1(c_len.median() * Y)`m다.
+
+이 사실에서 두 가지 결론이 나온다. 첫째, 사건의 수를 활동량의 척도로 쓸 때 만들어 낸 사건을 함께 세면 안 된다. 패스 하나가 패스, 받음, 이동의 세 사건으로 기록되므로 사건 수는 실제 동작의 수보다 크다. 둘째, 만들어 낸 사건의 위치는 원래 사건의 위치와 독립인 측정이 아니므로, 두 위치가 일치한다는 것을 측정이 정확하다는 증거로 삼을 수 없다.
+
+### 2. 시각의 점검
+
+```{python}
+#| include: false
+ok = P[P["pass_outcome_name"].isna() & (P["duration"] > 0)]
+v = ok["pass_length"] * Y / ok["duration"]
+LIMIT = 40
+n_off = int((E4["off_camera"] == True).sum())
+```
+
+시각의 기록은 물리적으로 가능한 범위와 대조해 점검할 수 있다. 패스에는 지속 시간(`duration`)과 길이(`pass_length`)가 있으므로, 길이를 시간으로 나누면 공의 평균 속도가 나온다. 성공한 패스 `{python} f0(len(ok))`개에서 계산한 공의 평균 속도는 중앙값이 초속 `{python} f1(v.median())`m(시속 `{python} f0(v.median() * 3.6)`km)이고 99번째 백분위수가 초속 `{python} f1(v.quantile(0.99))`m다. 이 범위는 그럴듯하다. 그러나 초속 `{python} f0(LIMIT)`m(시속 `{python} f0(LIMIT * 3.6)`km)를 넘는 패스가 `{python} f0((v > LIMIT).sum())`개 있고 가장 큰 값은 초속 `{python} f0(v.max())`m다. 패스에서 나올 수 없는 값이므로 이 패스들은 지속 시간이 지나치게 짧게 기록된 것이다. 전체의 `{python} pc((v > LIMIT).mean(), 2)`%로 드물지만, 속도를 분석에 쓸 때는 이런 값을 먼저 걸러 내야 한다. 값의 범위를 물리적 한계와 대조하는 점검은 운동학 1장에서 추적 데이터의 속도와 가속도에 다시 쓴다.
+
+### 3. 관측자 간 신뢰도
+
+사건 데이터는 사람이 판단해 기록한 것이다. 같은 장면을 두 기록원이 따로 기록하면 결과가 다를 수 있다. 이 차이를 측정하는 것이 관측자 간 신뢰도(inter-rater reliability)다. 범주로 기록한 값의 일치는 흔히 Cohen (1960)의 카파로 측정한다. 두 기록원이 같은 범주를 고른 비율을 $p_o$, 두 사람이 각자의 범주별 비율대로 무작위로 골랐을 때 우연히 같을 비율을 $p_e$라 하면 카파는 다음과 같다.
+
+$$\kappa = \frac{p_o - p_e}{1 - p_e}$$
+
+$\kappa$는 우연을 넘어선 일치가 가능한 최대치의 얼마인지를 나타낸다. 두 사람이 언제나 일치하면 1이고 우연 수준이면 0이다. 단순 일치율 $p_o$를 쓰지 않는 까닭은 범주의 빈도가 한쪽으로 치우쳐 있으면 아무렇게나 골라도 일치율이 높게 나오기 때문이다. 사건의 대부분이 패스이면 두 기록원이 모든 사건을 패스라고만 적어도 일치율은 높다.
+
+축구의 사건 데이터에 대해서는 Liu et al. (2013)이 다른 회사(OPTA)의 기록원들이 같은 경기를 따로 기록한 결과를 비교해 일치도가 높다고 보고했다. 그러나 이 장의 데이터에는 그런 점검을 할 재료가 없다. 공개된 것은 최종 기록 하나뿐이어서 두 기록원의 결과를 비교할 수 없다. 데이터에서 할 수 있는 것은 이 장에서 한 점검들이다. 중복된 기록이 서로 일치하는지(III.2절의 반칙, IV.4절의 선수 위치), 값이 가능한 범위 안에 있는지(V.2절), 끝자리가 고른지(III.5절)를 본다. 이 점검들은 기록이 스스로 모순되지 않는다는 것을 보일 뿐이고 기록이 실제와 일치한다는 것을 보이지는 못한다. 판단이 많이 들어가는 유형일수록 이 한계가 크다. 슛이나 골은 누가 보아도 같지만, 압박이나 경합은 어디서부터 그 사건으로 볼지가 기록원의 기준에 달려 있다. 기록원이 장면을 보지 못한 경우도 있다. 중계가 다른 화면을 내보내는 동안 일어난 사건은 `off_camera`로 표시되어 있고, 명세서는 이런 사건의 정확도를 보장하지 않으며 기록원이 앞뒤 상황에서 추론한 것이라고 적고 있다(StatsBomb, 2019). 이 대회에서는 `{python} f0(n_off)`개(`{python} pc(n_off / len(E4), 1)`%)다.
+
+## VI. 정리: 뒤 장을 위한 결론
+
+이 장의 결과에서 뒤 장이 따를 규칙 다섯 가지가 나온다.
+
+첫째, 사건 표의 빈 값은 대부분 해당 사항이 없다는 뜻이다. 분석은 사건의 유형으로 행을 먼저 고른다. 시각은 `period`와 `timestamp`로 정하고, 승부차기는 뺀다.
+
+둘째, 사건은 선수, 팀, 경기에 겹쳐 속해 있다. 사건의 수는 많지만 경기는 64개, 팀은 32개다. 분석 단위는 질문이 정하고, 그 아래의 관측은 독립이 아니다.
+
+셋째, 좌표는 팀마다 자기 공격 방향을 기준으로 적혀 있다. 두 팀의 위치를 함께 다룰 때는 한쪽을 $x' = 120 - x$, $y' = 80 - y$로 반전한다. 좌표의 1단위는 1야드로 읽고, 경기장을 가로지르는 긴 거리는 실제보다 몇 % 크게 나올 수 있다.
+
+넷째, 프리즈 프레임에 없는 선수는 화면 밖에 있었던 선수이고, 이 결측은 선수의 위치에 의존한다. 보이는 선수의 수를 그대로 세지 않고, 보인 영역 안에서만 진술한다. 사건을 한 선수의 위치가 사건의 위치와 어긋나는 프레임은 쓰지 않는다.
+
+다섯째, 사건 데이터는 사람이 기록한 것이다. `Ball Receipt*`와 `Carry`는 다른 사건에서 만들어 낸 것이어서 독립인 측정으로 세지 않는다. 시간에서 계산한 속도는 가능한 범위와 대조한 뒤에 쓴다. 판단이 들어가는 유형의 기록이 얼마나 재현되는지는 이 데이터로 알 수 없다.
+
+## 참고문헌
+
+Cohen, J. (1960). "A coefficient of agreement for nominal scales." *Educational and Psychological Measurement* 20(1), 37–46.
+
+IFAB (2022). *Laws of the Game 2022/23*. The International Football Association Board.
+
+Liu, H., Hopkins, W., Gómez, M. A., and Molinuevo, J. S. (2013). "Inter-operator reliability of live football match statistics from OPTA Sportsdata." *International Journal of Performance Analysis in Sport* 13(3), 803–821.
+
+Pappalardo, L., Cintia, P., Rossi, A., Massucco, E., Ferragina, P., Pedreschi, D., and Giannotti, F. (2019). "A public data set of spatio-temporal match events in soccer competitions." *Scientific Data* 6, 236.
+
+Rubin, D. B. (1976). "Inference and missing data." *Biometrika* 63(3), 581–592.
+
+StatsBomb (2019). *StatsBomb Open Events Structure and Data Specification* (v4.0.0). StatsBomb.
+
+StatsBomb (2021). *Open Data 360 Frames Specification* (v1.0.0). StatsBomb.
+
+Wickham, H. (2014). "Tidy data." *Journal of Statistical Software* 59(10), 1–23.
