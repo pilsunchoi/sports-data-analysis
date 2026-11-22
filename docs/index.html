@@ -184,7 +184,7 @@
           <tr><td class="b" rowspan="2"><a href="#chain" onclick="showTab('chain');return false">연쇄</a></td><td class="r">1</td><td>마르코프 연쇄, 전이 행렬, 흡수 확률, 군집 붓스트랩</td><td>공이 이 구역에 있으면 골이 날 확률은 얼마인가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="r">2</td><td>그래프의 표현, 중심성, 희박화, 급내상관계수</td><td>공은 누구를 거쳐 가는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b" rowspan="2"><a href="#spatial" onclick="showTab('spatial');return false">공간</a></td><td class="r">1</td><td>2차원 커널 밀도, 띠너비의 교차검증, 벌점 스플라인 평활</td><td>슛과 압박은 경기장의 어디에 몰리는가</td><td><span class="pill warn">초고</span></td></tr>
-          <tr><td class="r">2</td><td>보로노이 분할, 보인 영역의 처리</td><td>패스를 받는 선수는 얼마나 비어 있는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="r">2</td><td>보로노이 분할, 일부만 관측된 자료에서의 범위, 슛을 막는 수비수</td><td>패스를 받는 선수는 얼마나 비어 있는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b">차원 축소</td><td class="r">1</td><td>주성분 분석, 군집</td><td>선수의 역할은 몇 가지인가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="b" rowspan="2">운동학</td><td class="r">1</td><td>위치의 수치 미분, 평활, 속도와 가속도</td><td>위치 기록에서 속도를 어떻게 얻는가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="r">2</td><td>반복 측정의 선형 혼합모형</td><td>선수는 후반에 덜 뛰는가</td><td><span class="pill info">예정</span></td></tr>
@@ -469,6 +469,27 @@
           <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/08-spatial-smoothing.md" target="_blank" rel="noopener">장 읽기</a>
           <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/08-spatial-smoothing.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
           <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/sportsdata/smooth.py" target="_blank" rel="noopener">평활의 계산 코드</a>
+        </div>
+      </div>
+    </article>
+
+    <article class="study">
+      <div class="study-num">2</div>
+      <div class="study-body">
+        <h4 class="study-title">보로노이 분할 — 패스를 받는 선수는 얼마나 비어 있는가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">보로노이 칸과 반평면의 교집합 · 빈 원의 성질 · 값이 확정되는 조건 · 값에 의존하는 결측 · 구간으로 아는 관측과 분포의 범위(부분 식별) · 질문을 관측에 맞추기 · 슛과 골대 사이의 수비수</p>
+        <p class="study-desc">공을 받은 순간 51,089개의 프리즈 프레임에서 받는 선수 주변의 공간을 계산한다. 프레임에는 화면에 잡힌 선수만 있으므로, 보이지 않는 선수가 어디에 있든 값이 달라지지 않는 조건을 기하학으로 구하고, 확정되지 않는 값은 놓일 수 있는 범위를 구한다. 같은 순서로 슛과 골대 사이의 수비수를 세어 회귀 1장의 모형에 넣는다.</p>
+        <p class="study-lbl">2022년 월드컵 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>받는 선수의 보로노이 칸이 확정되는 것은 20%뿐이다. 확정된 것만 고르면 붐비는 장면만 남는다. 가장 가까운 상대까지의 거리의 중앙값은 6.1~7.8야드 사이인데 확정된 관측만으로 구하면 5.3야드로 그 범위 밖이다.</li>
+          <li>질문을 3야드 안에 상대가 있는가로 바꾸면 98.8%에서 답이 확정된다. 그 비율은 자기 진영 6~7%, 가운데 14~15%, 상대 진영의 페널티 구역 밖 22~24%, 페널티 구역 65%다.</li>
+          <li>거리, 각도, 머리 여부가 같은 슛에서 슛과 골대 사이의 수비수 한 명은 득점의 승산을 0.59배로 만든다(95% 구간 0.45~0.79). 교차검증의 로그 손실은 0.2885에서 0.2838로 줄지만 차이의 구간은 0을 포함한다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch09_voronoi.png" alt="결승전에서 공을 받은 두 순간의 보로노이 분할. 왼쪽은 가장 가까운 상대까지의 원이 보인 영역 안에 있어 값이 확정되고, 오른쪽은 원과 칸이 보인 영역의 가장자리 밖으로 나가 확정되지 않는다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/09-space-control.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/09-space-control.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/sportsdata/space.py" target="_blank" rel="noopener">공간의 계산 코드</a>
         </div>
       </div>
     </article>

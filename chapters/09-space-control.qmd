@@ -1,0 +1,438 @@
+---
+title: "공간 2장. 보로노이 분할 — 패스를 받는 선수는 얼마나 비어 있는가"
+lang: ko
+format:
+  gfm:
+    toc: true
+    toc-depth: 2
+    wrap: none
+jupyter: python3
+execute:
+  echo: false
+  warning: false
+---
+
+```{python}
+#| include: false
+import sys
+import warnings
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import statsmodels.formula.api as smf
+from matplotlib.patches import Circle, Polygon
+
+warnings.filterwarnings("ignore")
+ROOT = Path.cwd().parent if (Path.cwd().parent / "sportsdata").exists() else Path.cwd()
+sys.path.insert(0, str(ROOT))
+from sportsdata import statsbomb as sb
+from sportsdata import space as sp
+from sportsdata.features import shot_table
+from sportsdata.pitch import draw_pitch, use_style
+from sportsdata.report import tab, f0, f1, pc, josa
+
+use_style()
+EV = sb.all_events()
+FR = sb.all_frames()
+VA = sb.all_visible_areas()
+MT = sb.matches()
+T = sb._cached("receipt-space-43-106", lambda: sp.receipt_table(EV, FR, VA))
+POLY = VA.set_index("event_uuid")["polygon"]
+AREA = 120 * 80
+NB = 1000
+rng = np.random.default_rng(2022)
+T["exact"] = T["d1"] <= T["du"]
+T["lower"] = np.minimum(T["d1"], T["du"])
+```
+
+> 데이터: StatsBomb 공개 데이터(<https://github.com/statsbomb/open-data>). 이용 약관에 따라 데이터는 이 저장소에 싣지 않는다.
+
+이 장은 평면 위의 점들이 공간을 어떻게 나누어 가지는지를 계산하는 방법을 설명한다. 예는 선수의 배치다. 공간 1장은 사건이 일어난 위치만 보았다. 이 장은 그 순간 다른 선수들이 어디에 있었는지를 본다. 공을 받는 선수가 얼마나 비어 있었는지는 받은 위치만으로는 알 수 없고, 가장 가까운 상대가 어디에 있었는지를 알아야 한다. 자료는 데이터 1장에서 구조를 살펴본 프리즈 프레임이다.
+
+이 장에는 방법이 둘 있다. 하나는 보로노이 분할이다. 점마다 그 점이 가장 가까운 영역을 배정해 평면을 나눈다. 다른 하나는 일부만 관측된 자료에서 무엇을 말할 수 있는지를 따지는 일이다. 프리즈 프레임에는 화면에 잡힌 선수만 있다. 보이지 않는 선수가 어디에 있느냐에 따라 답이 달라지는 질문이 있고, 달라지지 않는 질문이 있다. 이 장은 값이 확정되는 조건을 기하학으로 구하고, 확정되지 않을 때는 값이 놓일 수 있는 범위를 구한다.
+
+장의 순서는 다음과 같다. I장은 자료를 만든다. II장은 보로노이 분할을 설명한다. III장은 보이지 않는 선수가 만드는 문제를 다룬다. IV장은 가장 가까운 상대까지의 거리에 대해 값의 범위를 구한다. V장은 질문을 관측된 범위에 맞추어 바꾸고 결과를 본다. VI장은 같은 순서를 슛에 적용해, 회귀 1장에서 미루어 둔 슛과 골대 사이의 수비수를 모형에 넣는다. VII장은 해석을, VIII장은 이 방법을 쓴 연구를 적는다.
+
+## I. 질문과 자료
+
+질문은 공을 받는 순간 받는 선수의 주변에 상대가 얼마나 가까이 있는가다. 사건 데이터에서 패스가 성공하면 받은 선수의 사건(`Ball Receipt*`)이 따로 기록되고, 그 사건에도 프리즈 프레임이 붙는다. 이 프레임에서 사건을 한 선수(`actor`)는 공을 받은 선수이고, 나머지 선수는 같은 팀인지 아닌지만 표시되어 있다. 이 장은 성공한 받음 가운데 프레임이 있는 것을 쓴다. 승부차기는 뺀다. 표 1은 그 자료의 요약이다.
+
+```{python}
+#| output: asis
+t1 = pd.DataFrame([
+    {"항목": "공을 받은 순간(프리즈 프레임이 있는 것)", "값": f0(len(T))},
+    {"항목": "프레임에 보인 선수의 수의 평균", "값": f1(T["players"].mean(), 1)},
+    {"항목": "보인 영역이 경기장에서 차지하는 비율의 평균(%)", "값": pc(T["visible"].mean() / AREA, 0)},
+    {"항목": "22명이 모두 보인 프레임", "값": f0((T["players"] == 22).sum())},
+    {"항목": "상대 선수가 한 명도 보이지 않는 프레임", "값": f0(np.isinf(T["d1"]).sum())},
+])
+tab(t1, "표 1. 공을 받은 순간의 프리즈 프레임: 자료의 요약")
+assert (T["players"] == 22).sum() == 0
+```
+
+표 1에서 공을 받은 순간은 `{python} f0(len(T))`개다. 프레임 하나에 보인 선수는 평균 `{python} f1(T["players"].mean(), 1)`명이고, 보인 영역은 평균적으로 경기장의 `{python} pc(T["visible"].mean() / AREA, 0)`%다. 22명이 모두 보인 프레임은 하나도 없다. 프레임마다 평균 `{python} f1(22 - T["players"].mean(), 0)`명이 화면 밖에 있다. 데이터 1장 IV.3절에서 본 대로 이 결측은 무작위가 아니다. 카메라는 공을 따라가므로 공에서 먼 선수가 빠진다. 받는 선수는 공이 가는 곳에 있으므로 화면 안에 있지만, 그 주변의 선수가 모두 화면 안에 있다는 보장은 없다.
+
+## II. 보로노이 분할
+
+### 1. 정의
+
+평면 위에 점 $p_1, \ldots, p_n$이 있다. 점 $p_i$의 보로노이 칸(Voronoi cell)은 평면의 점 가운데 다른 어느 점보다 $p_i$에 가까운 점의 집합이다.
+
+$$V_i = \lbrace x : \lVert x - p_i \rVert \le \lVert x - p_j \rVert \text{ for all } j \ne i \rbrace$$
+
+칸들을 모으면 평면이 겹치지 않게 나뉜다. 이것이 보로노이 분할(Voronoi tessellation)이다(Okabe et al., 2000). 점이 선수이면 칸은 그 선수가 다른 누구보다 가까운 땅이다. 모든 선수가 같은 속력으로 동시에 출발한다면 먼저 도착할 수 있는 영역이라는 뜻이 된다. 선수의 속도와 방향을 고려하지 않은 단순한 정의이고, 그래서 위치만 있는 자료로 계산할 수 있다. 칸의 넓이가 크면 그 선수의 주변이 비어 있다.
+
+### 2. 계산
+
+칸의 정의에 있는 조건 하나를 풀어 쓰면 직선의 한쪽이다. $\lVert x - p_i \rVert \le \lVert x - p_j \rVert$의 양변을 제곱해 정리하면 다음이 된다.
+
+$$2\ (p_j - p_i) \cdot x \le \lVert p_j \rVert^2 - \lVert p_i \rVert^2$$
+
+$x$에 대한 1차 부등식이다. 등호가 성립하는 직선은 두 점을 잇는 선분의 수직이등분선이고, 부등식은 그 직선의 $p_i$ 쪽 반평면이다. 그러므로 칸 $V_i$는 반평면 $n - 1$개의 교집합이다. 반평면의 교집합은 볼록하므로 칸은 볼록 다각형이다. 계산은 이 성질을 그대로 따른다. 경기장 전체를 나타내는 다각형에서 출발해, 다른 선수마다 수직이등분선으로 다각형을 잘라 $p_i$ 쪽만 남긴다. 볼록 다각형을 직선으로 자르는 일은 꼭짓점을 차례로 돌며 직선의 어느 쪽인지를 보고 경계와 만나는 점을 더하는 것이다. `sportsdata/space.py`의 `voronoi_cell` 함수가 한다. 선수가 22명뿐이므로 이 단순한 방법으로 충분하다.
+
+성질 하나가 뒤에서 쓰인다. 칸의 꼭짓점 $v$에서 $p_i$까지의 거리를 반지름으로 하는 원을 $v$를 중심으로 그리면, 그 원의 안쪽에는 어떤 선수도 없다. 꼭짓점은 $p_i$와 다른 두 선수에게서 같은 거리에 있는 점이고, 그보다 가까운 선수가 있었다면 그 꼭짓점은 그 선수의 칸에 속했을 것이기 때문이다.
+
+### 3. 한 장면
+
+그림 1은 결승전의 두 장면이다. 회색으로 칠한 부분이 보인 영역이고, 그 안을 프레임에 보인 선수들의 보로노이 칸으로 나누었다. 검은 점은 공을 받은 팀, 빈 원은 상대 팀이고, 세모가 공을 받은 선수다. 받은 선수의 칸은 굵은 선으로 둘렀다. 점선의 원은 받은 선수를 중심으로 가장 가까운 상대까지의 거리를 반지름으로 그린 것이다.
+
+```{python}
+#| label: fig1-voronoi
+#| fig-cap: "**그림 1. 공을 받은 순간의 보로노이 분할: 결승전의 두 장면**"
+FIN = int(MT.loc[MT["competition_stage_name"] == "Final", "match_id"].iloc[0])
+cand = T[(T["match_id"] == FIN) & (T["players"] >= 16) & T["x"].between(50, 100) & np.isfinite(T["d1"])]
+ex_a = cand[cand["det"] & cand["exact"]].iloc[0]
+ex_b = cand[~cand["exact"] & (cand["d1"] > cand["du"] + 3)].iloc[0]
+
+
+def draw_frame(ax, row, title):
+    g = FR[FR["event_uuid"] == row["id"]]
+    vis = sp.as_polygon(POLY[row["id"]])
+    xy, mate, actor = g[["x", "y"]].to_numpy(), g["teammate"].to_numpy(), g["actor"].to_numpy()
+    draw_pitch(ax, lw=0.5, color="0.55")
+    ax.add_patch(Polygon(vis, closed=True, facecolor="0.9", edgecolor="none", zorder=0))
+    for i in range(len(xy)):
+        c = sp.voronoi_cell(xy[i], np.delete(xy, i, 0), vis)
+        if len(c) >= 3:
+            ax.add_patch(Polygon(c, closed=True, fill=False, edgecolor="black", linewidth=1.6 if actor[i] else 0.4, zorder=3 if actor[i] else 1))
+    ax.scatter(*xy[mate & ~actor].T, s=14, color="black", zorder=4)
+    ax.scatter(*xy[~mate].T, s=14, facecolor="white", edgecolor="black", linewidth=0.7, zorder=4)
+    ax.scatter(*xy[actor].T, s=30, marker="^", color="black", zorder=5)
+    ax.add_patch(Circle(xy[actor][0], row["d1"], fill=False, linestyle="--", linewidth=0.7, edgecolor="black", zorder=4))
+    ax.set_title(title, fontsize=8)
+
+
+fig, axes = plt.subplots(1, 2, figsize=(6.6, 2.6))
+draw_frame(axes[0], ex_a, "(가) 원이 보인 영역 안에 있다")
+draw_frame(axes[1], ex_b, "(나) 원이 보인 영역 밖으로 나간다")
+fig.tight_layout()
+plt.show()
+```
+
+그림 1의 (가)에서 받은 선수의 칸은 넓이가 `{python} f0(ex_a["cell"])`제곱야드이고 가장 가까운 상대는 `{python} f1(ex_a["d1"], 1)`야드 떨어져 있다. 칸의 변은 모두 다른 선수와의 수직이등분선이다. (나)에서는 사정이 다르다. 받은 선수의 칸이 보인 영역의 가장자리에 닿아 있다. 그 변은 다른 선수와의 경계가 아니라 카메라가 비춘 범위의 끝이다. 칸이 실제로 어디까지인지는 그 너머에 누가 있는지에 달려 있다. 점선의 원도 보인 영역 밖으로 나간다. 원 안의 보이지 않는 부분에 상대가 있었다면 가장 가까운 상대는 프레임에서 구한 `{python} f1(ex_b["d1"], 1)`야드보다 가까이 있었다.
+
+## III. 보이지 않는 선수
+
+### 1. 값이 확정되는 조건
+
+프레임에서 구한 값이 실제 값과 같다고 말하려면 보이지 않는 선수가 어디에 있든 그 값이 달라지지 않아야 한다. 이것은 기하학의 문제이고 조건을 정확히 적을 수 있다. 준비로 거리 하나를 정의한다. 점 $x$에서 보이지 않는 곳까지의 거리 $u(x)$는 $x$에서 보인 영역의 경계까지의 가장 짧은 거리다. 다만 경계 가운데 경기장의 터치라인이나 골라인과 겹치는 변은 세지 않는다. 그 너머는 경기장 밖이어서 선수가 없기 때문이다. 보이지 않는 선수는 누구든 $x$에서 $u(x)$ 이상 떨어져 있다.
+
+가장 가까운 상대까지의 거리부터 본다. 받은 선수의 위치를 $p$, 프레임에 보인 가장 가까운 상대까지의 거리를 $d$라 하자. 보이지 않는 상대는 $p$에서 $u(p)$ 이상 떨어져 있으므로 다음이 성립한다.
+
+$$d \le u(p) \quad \Longrightarrow \quad \text{실제의 가장 가까운 상대까지의 거리는 } d \text{다}$$
+
+그림 1에서 점선의 원이 보인 영역 안에 있다는 것이 이 조건이다. 보로노이 칸에 대해서는 II.2절의 성질을 쓴다. 보이지 않는 선수 $q$가 칸의 일부를 가져가려면 칸의 어떤 점에 $p$보다 가까워야 한다. 칸은 볼록 다각형이고 $q$에 더 가까운 영역은 반평면이므로, $q$가 칸의 어떤 점에 더 가깝다면 칸의 어떤 꼭짓점에도 더 가깝다. 그러므로 조건은 꼭짓점에서만 확인하면 된다.
+
+$$\lVert v - p \rVert \le u(v) \ \text{ for every vertex } v \text{ of the cell} \quad \Longrightarrow \quad \text{칸은 실제의 칸과 같다}$$
+
+꼭짓점마다 II.2절의 빈 원을 그렸을 때 그 원이 모두 보인 영역 안에 있다는 뜻이다. 칸이 보인 영역의 가장자리에 닿으면 그 꼭짓점에서 $u(v) = 0$이므로 조건이 성립하지 않는다. 두 조건 모두 프레임에 있는 값만으로 확인할 수 있다. 보이지 않는 선수에 대한 가정은 그들이 보인 영역 밖에 있다는 것 하나뿐이다. `sportsdata/space.py`의 `unseen_distance`와 `cell_is_determined`가 계산한다.
+
+### 2. 확정되는 것은 일부다
+
+표 2는 두 값에 대해 조건이 성립하는 받음의 비율과, 성립하는 것만의 중앙값과 전체의 중앙값을 적은 것이다. 전체의 중앙값은 보이지 않는 선수가 없다고 치고 프레임에 보인 선수만으로 계산한 값이다.
+
+```{python}
+#| output: asis
+fin = np.isfinite(T["d1"])
+t2 = pd.DataFrame([
+    {"값": "보로노이 칸의 넓이(제곱야드)", "확정되는 비율(%)": 100 * T["det"].mean(),
+     "확정된 것의 중앙값": T.loc[T["det"], "cell"].median(), "전체의 중앙값(보인 선수만으로)": T["cell"].median()},
+    {"값": "가장 가까운 상대까지의 거리(야드)", "확정되는 비율(%)": 100 * T["exact"].mean(),
+     "확정된 것의 중앙값": T.loc[T["exact"], "d1"].median(), "전체의 중앙값(보인 선수만으로)": T["d1"].median()},
+])
+tab(t2, "표 2. 값이 확정되는 받음의 비율과 중앙값", [0, 1, 1, 1])
+ratio_cell = T["cell"].median() / T.loc[T["det"], "cell"].median()
+```
+
+표 2에서 칸의 넓이가 확정되는 받음은 `{python} pc(T["det"].mean(), 0)`%뿐이다. 다섯 가운데 넷은 칸이 보인 영역의 가장자리에 닿거나, 보이지 않는 선수가 칸을 줄였을 수 있다. 가장 가까운 상대까지의 거리는 `{python} pc(T["exact"].mean(), 0)`%에서 확정된다. 칸은 여러 방향의 선수로 정해지므로 조건이 더 까다롭다.
+
+더 중요한 것은 중앙값의 차이다. 확정된 칸의 넓이의 중앙값은 `{python} f0(T.loc[T["det"], "cell"].median())`제곱야드이고, 보인 선수만으로 구한 전체의 중앙값은 그 `{python} f1(ratio_cell, 1)`배다. 거리도 확정된 것의 중앙값이 `{python} f1(T.loc[T["exact"], "d1"].median(), 1)`야드로 전체의 `{python} f1(T["d1"].median(), 1)`야드보다 작다. 둘 다 옳은 값이 아니다. 전체의 중앙값은 보이지 않는 선수를 없는 것으로 쳤으므로 너무 크다. 확정된 것의 중앙값은 너무 작다. 확정된다는 조건 자체가 값에 달려 있기 때문이다. 칸이 작을수록, 상대가 가까울수록 조건이 성립하기 쉽다. 확정된 것만 고르면 붐비는 장면만 고르게 된다. 생존 분석 1장에서 사건이 일어난 관측만 골라 평균을 내면 안 되었던 것과 같은 구조다.
+
+### 3. 결측은 값에 의존한다
+
+확정되는지를 정하는 것은 $u(p)$, 곧 받은 선수가 화면의 가장자리에서 얼마나 떨어져 있는지다. 이 거리가 선수 주변의 상황과 무관하다면 문제가 가벼워진다. 표 3은 받음을 $u(p)$의 크기에 따라 5등분하고, 등분마다 프레임에 보인 상대가 3야드 안에 있는 비율을 적은 것이다.
+
+```{python}
+#| output: asis
+T["uq"] = pd.qcut(T["du"], 5, labels=False)
+t3 = T.groupby("uq").agg(lo=("du", "min"), hi=("du", "max"), n=("du", "size"), p3=("d1", lambda s: 100 * (s <= 3).mean()), x=("x", "mean")).reset_index(drop=True)
+t3 = pd.DataFrame({"보이지 않는 곳까지의 거리(야드)": [f"{a:.1f}~{b:.1f}" for a, b in zip(t3["lo"], t3["hi"])], "받음": t3["n"],
+                   "상대가 3야드 안에 있는 비율(%)": t3["p3"]})
+tab(t3, "표 3. 화면의 가장자리까지의 거리와 받는 선수의 상황", [0, 0, 1])
+p3q = t3["상대가 3야드 안에 있는 비율(%)"].to_numpy()
+```
+
+표 3에서 두 값은 무관하지 않다. 화면의 가장자리에 가장 가까운 등분에서는 상대가 3야드 안에 있는 비율이 `{python} f1(p3q[0], 1)`%이고, 가장 먼 두 등분에서는 `{python} f1(p3q[-2], 1)`%와 `{python} f1(p3q[-1], 1)`%다. 화면의 가운데에서 공을 받는 선수는 상대와 가깝고, 가장자리에서 받는 선수는 비어 있다. 카메라가 선수가 몰린 곳을 가운데에 놓기 때문으로 보인다. 그러므로 가장자리에서 먼 받음만 골라 분석해도 치우침이 생긴다. 조건이 성립하는 것만 쓰는 방법은 조건이 값과 무관할 때만 치우침이 없고, 이 자료는 그렇지 않다.
+
+## IV. 값의 범위
+
+### 1. 확정되지 않아도 범위는 안다
+
+확정되지 않은 관측에 대해 아무것도 모르는 것은 아니다. 실제의 가장 가까운 상대까지의 거리 $D$는 프레임에 보인 상대까지의 거리 $d$와 보이지 않는 상대까지의 거리 가운데 작은 쪽이다. 보이지 않는 상대는 $u(p)$ 이상 떨어져 있다. 따라서 다음이 언제나 성립한다.
+
+$$\min\lbrace d,\ u(p) \rbrace \le D \le d$$
+
+$d \le u(p)$이면 양쪽이 같아서 $D = d$이고, III.1절의 조건이 이것이다. 그렇지 않으면 $D$는 $u(p)$와 $d$ 사이의 어딘가에 있다. 관측마다 값 하나가 아니라 구간 하나를 아는 것이다. 생존 분석 1장의 중도절단은 값이 어떤 수보다 크다는 것만 아는 경우였다. 여기서는 위와 아래가 모두 막혀 있다.
+
+관측마다 구간을 알면 분포에 대해서도 범위를 말할 수 있다. 모든 관측에 아래 끝을 넣어 만든 분포와 위 끝을 넣어 만든 분포를 구한다. 실제 분포는 그 둘 사이에 있다. 이 범위는 보이지 않는 선수의 위치에 대해 아무 가정도 하지 않고 얻은 것이다. 가정 없이 자료만으로 말할 수 있는 것의 범위를 구하는 이런 접근을 부분 식별(partial identification)이라 한다(Manski, 2003).
+
+### 2. 분포의 범위
+
+그림 2는 가장 가까운 상대까지의 거리의 누적 분포다. 실선 둘이 범위의 양쪽 끝이다. 위쪽 실선은 모든 관측에 구간의 아래 끝을, 아래쪽 실선은 위 끝을 넣은 것이다. 실제의 누적 분포는 두 실선 사이에 있다. 점선은 확정된 관측만으로 만든 분포다.
+
+```{python}
+#| label: fig2-bounds
+#| fig-cap: "**그림 2. 가장 가까운 상대까지의 거리의 누적 분포: 범위의 양쪽 끝과 확정된 관측만의 분포**"
+grid = np.linspace(0, 25, 251)
+ecdf = lambda v: np.searchsorted(np.sort(v), grid, side="right") / len(v)
+F_lo, F_hi, F_ex = ecdf(T["d1"].to_numpy()), ecdf(T["lower"].to_numpy()), ecdf(T.loc[T["exact"], "d1"].to_numpy())
+fig, ax = plt.subplots(figsize=(5.0, 3.0))
+ax.fill_between(grid, F_lo, F_hi, color="0.85", zorder=1)
+ax.plot(grid, F_hi, color="black", lw=1.0, zorder=2)
+ax.plot(grid, F_lo, color="black", lw=1.0, zorder=2)
+ax.plot(grid, F_ex, color="black", lw=0.8, ls="--", zorder=2)
+ax.set_xlabel("가장 가까운 상대까지의 거리 (야드)")
+ax.set_ylabel("누적 비율")
+ax.set_xlim(0, 25)
+ax.set_ylim(0, 1)
+ax.grid(True)
+ax.set_axisbelow(True)
+plt.show()
+med_lo, med_hi = T["lower"].median(), T["d1"].median()
+med_ex = T.loc[T["exact"], "d1"].median()
+width = F_hi - F_lo
+w3, w5, w10 = (width[np.abs(grid - r).argmin()] for r in (3, 5, 10))
+assert med_ex < med_lo
+```
+
+그림 2에서 범위의 너비는 거리에 따라 다르다. 3야드에서는 두 실선이 거의 붙어 있어서 너비가 `{python} pc(w3, 1)`%포인트이고, 5야드에서는 `{python} pc(w5, 1)`%포인트, 10야드에서는 `{python} pc(w10, 0)`%포인트다. 가까운 거리에 관한 진술은 거의 확정되고 먼 거리에 관한 진술은 그렇지 않다. 가까운 곳은 대개 화면 안에 있기 때문이다. 중앙값은 `{python} f1(med_lo, 1)`야드와 `{python} f1(med_hi, 1)`야드 사이에 있다. 이 범위는 표본의 크기를 늘려도 줄어들지 않는다. 표본 오차가 아니라 관측되지 않은 것에서 오는 불확실성이기 때문이다.
+
+점선은 범위 밖에 있다. 확정된 관측만의 중앙값은 `{python} f1(med_ex, 1)`야드로 범위의 아래 끝 `{python} f1(med_lo, 1)`야드보다도 작다. III.2절에서 말한 치우침이 그림에 나타난 것이다. 확정된 관측만 쓰는 분석은 있을 수 있는 값의 범위를 벗어난 답을 준다.
+
+## V. 질문을 관측에 맞춘다
+
+### 1. 문턱 안에 상대가 있는가
+
+범위가 좁은 질문을 고르면 가정 없이도 거의 정확한 답을 얻는다. 그림 2가 그런 질문을 알려 준다. 받는 선수에게서 반지름 $r$ 안에 상대가 있는가를 묻는다. 이 질문은 다음의 두 경우에 답이 확정된다.
+
+$$d \le r \ \Rightarrow \ \text{있다}, \qquad d > r \ \text{and}\ u(p) \ge r \ \Rightarrow \ \text{없다}$$
+
+프레임에 보인 상대가 $r$ 안에 있으면 보이지 않는 선수와 상관없이 답은 있다이다. 보인 상대가 없고 반지름 $r$의 원이 모두 화면 안에 있으면 답은 없다이다. 남는 것은 보인 상대가 $r$ 안에 없는데 원의 일부가 화면 밖인 경우뿐이다. 그 경우를 모두 없다로 치면 비율의 아래 끝이, 모두 있다로 치면 위 끝이 나온다. $r$을 3야드로 둔다. 3야드는 한두 걸음에 닿는 거리다.
+
+표 4는 공을 받은 위치의 구역별 결과다. 가로 좌표로 자기 진영(0\~40), 가운데(40\~80), 상대 진영(80\~120)을 나누고 상대 진영에서 페널티 구역을 따로 떼었다. 범위의 양쪽 끝과 함께, 범위 전체에 대한 95% 신뢰구간을 적었다. 신뢰구간은 경기를 단위로 한 붓스트랩 1,000번에서 아래 끝의 2.5% 분위수와 위 끝의 97.5% 분위수로 구했다.
+
+```{python}
+#| output: asis
+R3 = 3.0
+T["yes"] = T["d1"] <= R3
+T["unknown"] = ~T["yes"] & (T["du"] < R3)
+T["zone"] = np.select([T["x"] < 40, T["x"] < 80, ~((T["x"] >= 102) & T["y"].between(18, 62))], ["자기 진영", "가운데", "상대 진영(페널티 구역 밖)"], "페널티 구역")
+ORDER = ["자기 진영", "가운데", "상대 진영(페널티 구역 밖)", "페널티 구역", "전체"]
+T2 = pd.concat([T, T.assign(zone="전체")])
+per = T2.groupby(["zone", "match_id"]).agg(n=("yes", "size"), yes=("yes", "sum"), unk=("unknown", "sum")).reset_index()
+mids = np.sort(T["match_id"].unique())
+rows = []
+for zname in ORDER:
+    d = per[per["zone"] == zname].set_index("match_id").reindex(mids).fillna(0)
+    lo, hi = d["yes"].sum() / d["n"].sum(), (d["yes"].sum() + d["unk"].sum()) / d["n"].sum()
+    b_lo, b_hi = [], []
+    for _ in range(NB):
+        s = d.loc[rng.choice(mids, len(mids))].sum()
+        b_lo.append(s["yes"] / s["n"])
+        b_hi.append((s["yes"] + s["unk"]) / s["n"])
+    rows.append({"구역": zname, "받음": int(d["n"].sum()), "답이 확정되는 비율(%)": 100 * (1 - d["unk"].sum() / d["n"].sum()),
+                 "아래 끝(%)": 100 * lo, "위 끝(%)": 100 * hi,
+                 "95% 신뢰구간": f"{100 * np.percentile(b_lo, 2.5):.1f}~{100 * np.percentile(b_hi, 97.5):.1f}"})
+t4 = pd.DataFrame(rows)
+tab(t4, "표 4. 공을 받는 순간 3야드 안에 상대가 있는 비율: 구역별 범위", [0, 0, 1, 1, 1, 0])
+q = t4.set_index("구역")
+```
+
+표 4에서 답이 확정되는 받음은 전체의 `{python} f1(q.loc["전체", "답이 확정되는 비율(%)"], 1)`%다. 표 2에서 칸의 넓이가 `{python} pc(T["det"].mean(), 0)`%에서만 확정되던 것과 같은 자료다. 질문을 바꾸자 거의 모든 관측이 쓸 수 있게 되었다. 전체에서 3야드 안에 상대가 있는 비율은 `{python} f1(q.loc["전체", "아래 끝(%)"], 1)`%와 `{python} f1(q.loc["전체", "위 끝(%)"], 1)`% 사이다. 범위의 너비가 `{python} f1(q.loc["전체", "위 끝(%)"] - q.loc["전체", "아래 끝(%)"], 1)`%포인트이고, 이것이 보이지 않는 선수 때문에 남는 불확실성의 전부다.
+
+구역 사이의 차이는 그 불확실성보다 훨씬 크다. 자기 진영에서 공을 받을 때 3야드 안에 상대가 있는 비율은 `{python} f1(q.loc["자기 진영", "아래 끝(%)"], 0)`\~`{python} f1(q.loc["자기 진영", "위 끝(%)"], 0)`%이고, 가운데에서는 `{python} f1(q.loc["가운데", "아래 끝(%)"], 0)`\~`{python} f1(q.loc["가운데", "위 끝(%)"], 0)`%, 상대 진영의 페널티 구역 밖에서는 `{python} f1(q.loc["상대 진영(페널티 구역 밖)", "아래 끝(%)"], 0)`\~`{python} f1(q.loc["상대 진영(페널티 구역 밖)", "위 끝(%)"], 0)`%다. 페널티 구역 안에서는 `{python} f1(q.loc["페널티 구역", "아래 끝(%)"], 0)`%로 셋 가운데 둘이 상대를 곁에 두고 공을 받는다. 구역마다의 범위가 서로 겹치지 않으므로 순서는 보이지 않는 선수가 어디에 있었든 달라지지 않는다. 상대 골대에 가까울수록 받는 선수는 덜 비어 있다. 연쇄 1장에서 구역의 값이 상대 골대 앞에서 급하게 올랐던 것과 함께 보면, 값이 높은 곳은 수비가 촘촘한 곳이다.
+
+### 2. 다른 기록과의 대조
+
+```{python}
+#| include: false
+known = ~T["unknown"]
+ct = pd.crosstab(T.loc[known, "under_pressure"], T.loc[known, "yes"], normalize="index")
+p_press, p_free = ct.loc[True, True], ct.loc[False, True]
+share_press = T["under_pressure"].mean()
+```
+
+프레임에서 계산한 값이 타당한지는 다른 경로로 기록된 값과 대조해 볼 수 있다. 사건 데이터에는 기록원이 영상을 보고 적은 압박 여부(`under_pressure`)가 있다. 공을 받는 순간 상대의 압박을 받고 있었는지다. 프리즈 프레임의 좌표와는 따로 기록된 값이다. 답이 확정된 받음에서, 압박을 받았다고 적힌 것(전체의 `{python} pc(share_press, 1)`%) 가운데 3야드 안에 상대가 있는 것은 `{python} pc(p_press, 0)`%이고, 압박이 없었다고 적힌 것 가운데서는 `{python} pc(p_free, 0)`%다. 두 기록은 같은 방향을 가리킨다. 완전히 일치하지 않는 것은 정의가 다르기 때문이기도 하다. 기록원의 압박은 상대가 다가오고 있는지를 포함한 판단이고, 프레임의 거리는 한 순간의 위치다.
+
+## VI. 슛과 골대 사이의 수비수
+
+### 1. 관측의 범위를 먼저 확인한다
+
+회귀 1장은 슛이 골이 될 확률을 거리와 각도, 머리로 한 슛인지로 설명했고, 슛과 골대 사이에 수비수가 있었는지는 이 장으로 미루었다. 같은 위치의 슛이라도 앞이 비어 있는 슛과 수비수 둘이 막아선 슛은 다르다. 이것을 변수로 만든다. 슛을 한 위치와 두 골대 기둥을 꼭짓점으로 하는 삼각형을 그린다. 공이 골대 안으로 가려면 이 삼각형 안을 지나야 한다. 삼각형 안에 있는 상대 선수의 수를 센다. 골키퍼는 따로 센다.
+
+사건 데이터에는 슛마다 그 순간의 선수 위치가 따로 기록되어 있다(`shot_freeze_frame`). 프리즈 프레임 파일과는 다른 기록이고 선수가 누구인지와 포지션이 적혀 있다. 이 기록에도 모든 선수가 있는 것은 아니다. 그러므로 III장의 원칙을 먼저 적용한다. 세려는 범위가 관측되었는지를 확인한다.
+
+```{python}
+#| include: false
+S = shot_table(EV)
+P1, P2 = np.array([120.0, 36.0]), np.array([120.0, 44.0])
+rows = []
+for r in S.itertuples():
+    ff = r.shot_freeze_frame
+    opp = np.array([p["location"] for p in ff if not p["teammate"] and p["position"]["name"] != "Goalkeeper"]).reshape(-1, 2)
+    gk = np.array([p["location"] for p in ff if not p["teammate"] and p["position"]["name"] == "Goalkeeper"]).reshape(-1, 2)
+    s = np.array([r.x, r.y])
+    tri_seen = np.nan
+    if r.id in POLY.index:
+        tri_seen = bool(sp.inside(sp.as_polygon(POLY[r.id]), np.vstack([s, P1, P2])).all())
+    rows.append({"cone": int(sp.in_triangle(opp, s, P1, P2).sum()) if len(opp) else 0,
+                 "gk": int(sp.in_triangle(gk, s, P1, P2).any()) if len(gk) else 0,
+                 "has_gk": len(gk) > 0, "n_ff": len(ff), "tri_seen": tri_seen})
+S = pd.concat([S, pd.DataFrame(rows, index=S.index)], axis=1)
+has360 = S["tri_seen"].notna()
+seen = S.loc[has360, "tri_seen"].astype(bool)
+assert S["has_gk"].all()
+```
+
+슛 `{python} f0(len(S))`개 모두에 이 기록이 있고, 슛 하나에 평균 `{python} f1(S["n_ff"].mean(), 1)`명의 위치가 있다. 상대 골키퍼의 위치는 모든 슛에 있다. 삼각형이 관측되었는지는 프리즈 프레임 파일의 보인 영역으로 확인한다. 슛 가운데 `{python} f0(has360.sum())`개에 그 파일의 프레임이 있고, 그 가운데 삼각형의 세 꼭짓점이 모두 보인 영역 안에 있는 것이 `{python} pc(seen.mean(), 1)`%다. 보인 영역은 볼록하므로 세 꼭짓점이 안에 있으면 삼각형 전체가 안에 있다. 받는 선수의 칸이 `{python} pc(T["det"].mean(), 0)`%에서만 확정되던 것에 비하면 사정이 훨씬 낫다. 슛의 장면에서 카메라는 골대 쪽을 비춘다. 그래도 `{python} pc(1 - seen.mean(), 0)`%의 슛에서는 삼각형의 일부가 화면 밖이다. 슛에 딸린 기록이 프리즈 프레임 파일과 같은 화면에서 만든 것인지는 명세서로 확인하지 못했다. 같은 화면이라면 그 슛들에서는 수비수를 덜 세었을 수 있다. 그래서 VI.3절에서 삼각형이 모두 관측된 슛만으로 모형을 다시 적합해 결과가 달라지는지를 본다.
+
+### 2. 수비수의 수와 득점
+
+표 5는 삼각형 안의 수비수의 수에 따른 슛의 수와 득점 비율, 골대까지의 거리의 중앙값이다. 골키퍼는 수에 넣지 않았다.
+
+```{python}
+#| output: asis
+S["cone_c"] = S["cone"].clip(upper=3)
+t5 = S.groupby("cone_c").agg(n=("goal", "size"), g=("goal", "sum"), rate=("goal", lambda s: 100 * s.mean()), dist=("dist", "median")).reset_index()
+t5 = pd.DataFrame({"삼각형 안의 수비수": ["0명", "1명", "2명", "3명 이상"], "슛": t5["n"], "골": t5["g"], "득점 비율(%)": t5["rate"], "거리의 중앙값(m)": t5["dist"]})
+tab(t5, "표 5. 슛과 골대 사이의 수비수의 수와 득점", [0, 0, 0, 1, 1])
+r5, d5 = t5["득점 비율(%)"].to_numpy(), t5["거리의 중앙값(m)"].to_numpy()
+```
+
+표 5에서 앞에 수비수가 없는 슛은 `{python} f1(r5[0], 1)`%가 골이 되고, 한 명이 있으면 `{python} f1(r5[1], 1)`%, 두 명이면 `{python} f1(r5[2], 1)`%다. 그런데 이 차이를 그대로 수비수의 효과로 읽을 수 없다. 거리가 함께 변한다. 수비수가 없는 슛의 거리의 중앙값은 `{python} f1(d5[0], 1)`m이고 두 명이 있는 슛은 `{python} f1(d5[2], 1)`m다. 먼 곳에서 찬 슛일수록 삼각형이 길어서 그 안에 선수가 많다. 회귀 1장 IV.2절에서 머리로 한 슛이 가까운 데서 나오기 때문에 겉보기 득점 비율이 높았던 것과 같은 교란이다. 거리와 각도가 같은 슛끼리 비교해야 한다.
+
+### 3. 모형에 넣는다
+
+회귀 1장의 모형 C(거리, 각도, 머리)에 두 변수를 더한다. 삼각형 안의 수비수의 수와, 골키퍼가 삼각형 안에 있는지다. 표 6은 이 모형의 승산비다.
+
+```{python}
+#| output: asis
+K = 8
+ids = np.sort(S["match_id"].unique())
+np.random.default_rng(2022).shuffle(ids)
+FOLD = {m: j for j, part in enumerate(np.array_split(ids, K)) for m in part}
+S["fold"] = S["match_id"].map(FOLD)
+FORM = {"B": "goal ~ dist + angle", "C": "goal ~ dist + angle + head", "D": "goal ~ dist + angle + head + cone + gk"}
+FIT = {k: smf.logit(f, S).fit(disp=0) for k, f in FORM.items()}
+mD = FIT["D"]
+ci = np.exp(mD.conf_int())
+NAME = {"dist": "거리 (1m)", "angle": "각도 (1도)", "head": "머리", "cone": "삼각형 안의 수비수 (1명)", "gk": "골키퍼가 삼각형 안에 있음"}
+t6 = pd.DataFrame({"변수": [NAME[k] for k in NAME], "승산비": [np.exp(mD.params[k]) for k in NAME],
+                   "95% 하한": [ci.loc[k, 0] for k in NAME], "95% 상한": [ci.loc[k, 1] for k in NAME],
+                   "p값": ["<0.001" if mD.pvalues[k] < 0.001 else f"{mD.pvalues[k]:.3f}" for k in NAME]})
+tab(t6, "표 6. 수비수를 넣은 슛의 모형: 승산비", [0, 2, 2, 2, 0])
+SUB = S[S["tri_seen"] == True]
+mSub = smf.logit(FORM["D"], SUB).fit(disp=0)
+ci_sub = np.exp(mSub.conf_int())
+or_sub = np.exp(mSub.params["cone"])
+assert abs(or_sub - np.exp(mD.params["cone"])) < 0.08 and ci_sub.loc["cone", 1] < 1
+from scipy import stats
+lr = 2 * (mD.llf - FIT["C"].llf)
+p_lr = stats.chi2.sf(lr, 2)
+or_cone, or_gk = np.exp(mD.params["cone"]), np.exp(mD.params["gk"])
+n_nogk = int((S["gk"] == 0).sum())
+```
+
+표 6에서 삼각형 안의 수비수 한 명은 득점의 승산을 `{python} f1(or_cone, 2)`배로 만든다. 거리와 각도, 머리 여부가 같은 슛에서 앞에 수비수가 한 명 더 있으면 승산이 `{python} pc(1 - or_cone, 0)`% 줄어든다. 신뢰구간은 `{python} f1(ci.loc["cone", 0], 2)`에서 `{python} f1(ci.loc["cone", 1], 2)`까지로 1을 포함하지 않는다. 골키퍼가 삼각형 안에 있는 것의 승산비는 `{python} f1(or_gk, 2)`이고 구간이 `{python} f1(ci.loc["gk", 0], 2)`에서 `{python} f1(ci.loc["gk", 1], 2)`까지로 넓다. 골키퍼가 삼각형 밖에 있는 슛이 `{python} f0(n_nogk)`개뿐이기 때문이다. 방향은 예상과 같지만 이 자료로는 크기를 정하지 못한다. 모형 C에 두 변수를 더한 것의 우도비 검정은 통계량이 `{python} f1(lr, 1)`이고 자유도 2에서 $p$값이 `{python} josa(f1(p_lr, 4), '다')`.
+
+VI.1절에서 미룬 점검을 한다. 삼각형이 모두 관측된 슛 `{python} f0(len(SUB))`개만으로 같은 모형을 적합하면 수비수의 승산비는 `{python} f1(or_sub, 2)`이고 신뢰구간은 `{python} f1(ci_sub.loc["cone", 0], 2)`에서 `{python} f1(ci_sub.loc["cone", 1], 2)`까지다. 전체 자료의 `{python} josa(f1(or_cone, 2), '와')` 거의 같고 구간도 1을 포함하지 않는다. 결론은 달라지지 않는다. 이 점검에도 III.2절의 문제가 있다는 점은 적어 둔다. 삼각형이 모두 보이는 슛은 골대에 가까운 슛에 치우쳐 있을 수 있다. 다만 여기서는 거리와 각도가 모형에 들어 있으므로, 관측 여부가 그 변수들로 설명되는 만큼은 통제된다.
+
+표 7은 교차검증에서의 예측이다. 회귀 1장과 같은 경기 단위의 8겹이다. 마지막 행은 데이터에 들어 있는 StatsBomb의 기대 득점이다.
+
+```{python}
+#| output: asis
+z = S["goal"].to_numpy()
+logloss = lambda p: -(z * np.log(p) + (1 - z) * np.log(1 - p))
+CV = {}
+for k, f in FORM.items():
+    p = np.empty(len(S))
+    for j in range(K):
+        te = (S["fold"] == j).to_numpy()
+        p[te] = smf.logit(f, S[~te]).fit(disp=0).predict(S[te])
+    CV[k] = logloss(np.clip(p, 1e-9, 1 - 1e-9))
+CV["X"] = logloss(S["shot_statsbomb_xg"].clip(1e-6, 1 - 1e-6).to_numpy())
+L = pd.DataFrame(CV).assign(match_id=S["match_id"].to_numpy())
+perm = L.groupby("match_id").agg(n=("C", "size"), B=("B", "sum"), C=("C", "sum"), D=("D", "sum"), X=("X", "sum"))
+diff = []
+for _ in range(NB):
+    s = perm.loc[rng.choice(perm.index, len(perm))].sum()
+    diff.append((s["D"] - s["C"]) / s["n"])
+d_lo, d_hi = np.percentile(diff, [2.5, 97.5])
+t7 = pd.DataFrame({"모형": ["모형 B: 거리, 각도", "모형 C: 거리, 각도, 머리", "모형 D: 모형 C와 수비수, 골키퍼", "StatsBomb의 기대 득점"],
+                   "모수": ["3", "4", "6", ""], "AIC": [FIT["B"].aic, FIT["C"].aic, FIT["D"].aic, np.nan],
+                   "교차검증의 로그 손실": [L[k].mean() for k in ("B", "C", "D", "X")]})
+tab(t7, "표 7. 슛의 모형 비교: AIC와 교차검증의 로그 손실", [0, 0, 1, 4])
+dDC = L["D"].mean() - L["C"].mean()
+gap_closed = (L["C"].mean() - L["D"].mean()) / (L["C"].mean() - L["X"].mean())
+assert dDC < 0
+```
+
+표 7에서 수비수와 골키퍼를 넣은 모형 D는 AIC와 교차검증의 로그 손실이 모두 모형 C보다 작다. 손실의 차이는 `{python} f1(dDC, 4)`이고, 경기를 단위로 한 붓스트랩의 95% 구간은 `{python} f1(d_lo, 4)`에서 `{python} f1(d_hi, 4)`까지다. 구간이 0을 포함한다. 두 가지 증거를 구분해서 읽는다. 수비수의 계수가 0이 아니라는 증거는 표 6의 신뢰구간과 우도비 검정에서 분명하다. 그 변수를 넣은 모형이 새 경기의 슛을 더 잘 예측한다는 증거는 방향은 같지만 골 `{python} f0(int(z.sum()))`개의 자료로는 확정되지 않는다. 공간 1장에서 위치를 더 유연하게 쓴 모형은 손실이 오히려 늘었다. 여기서는 위치가 아닌 다른 정보를 변수 2개로 더했고 손실이 줄었다. 크기는 작아도 방향이 반대다.
+
+StatsBomb의 기대 득점은 손실이 `{python} f1(L["X"].mean(), 4)`로 여전히 가장 작다. 모형 C와 그 값 사이의 차이 가운데 모형 D가 줄인 것은 `{python} pc(gap_closed, 0)`%다. 그 회사의 모형은 수비수의 위치를 더 자세히 쓰고, 슛의 종류와 공의 높이 같은 변수를 더 가지고 있으며, 훨씬 큰 자료로 추정한 것이다. 그 내용은 공개되어 있지 않으므로 무엇이 차이를 만드는지는 이 자료로 확인할 수 없다.
+
+## VII. 해석
+
+이 장에서 방법으로 남는 것은 관측의 범위를 따지는 순서다. 계산하려는 양이 자료의 어느 범위에 의존하는지를 먼저 적는다. 가장 가까운 상대까지의 거리는 그 거리를 반지름으로 하는 원에, 보로노이 칸은 칸의 꼭짓점마다 그린 원들에, 슛을 막는 수비수의 수는 슛과 골대를 잇는 삼각형에 의존한다. 그 범위가 관측되었으면 값은 확정된다. 관측되지 않았으면 선택지는 셋이다. 그 관측을 버리는 것, 보이지 않는 부분에 가정을 두는 것, 값의 범위를 구하는 것이다.
+
+버리는 것이 가장 쉽고 가장 위험하다. 확정되는지가 값 자체에 달려 있으면 남은 관측은 전체를 대표하지 않는다. 이 장에서 확정된 관측만의 중앙값은 있을 수 있는 범위의 밖에 있었다. 범위를 구하는 것은 가정이 없다는 것이 장점이고, 범위가 넓으면 쓸모가 없다는 것이 약점이다. 보로노이 칸의 넓이는 범위가 너무 넓어서 이 장에서 결과를 내지 않았다. 대신 질문을 바꾸었다. 3야드 안에 상대가 있는가라는 질문은 범위가 `{python} f1(q.loc["전체", "위 끝(%)"] - q.loc["전체", "아래 끝(%)"], 1)`%포인트로 좁았다. 자료가 답할 수 있는 질문을 찾는 것이 분석의 일부다.
+
+보로노이 분할 자체는 이 자료에서 주로 생각의 틀로 쓰였다. 칸이 확정되는 조건이 꼭짓점의 빈 원으로 적힌다는 것, 가까움으로 공간을 나눈다는 것이 그 내용이다. 선수 22명의 위치가 모두 있는 추적 데이터에서는 칸의 넓이를 그대로 쓸 수 있다. 그때에도 칸은 거리만으로 정한 것이라는 한계가 남는다. 전속력으로 달리는 선수와 서 있는 선수가 같은 거리에 있으면 칸은 둘을 같게 본다. 속도를 고려한 정의는 운동학 묶음에서 다루는 추적 데이터가 있어야 가능하다.
+
+슛의 결과는 인과로 읽지 않는다. 수비수 한 명이 승산을 `{python} pc(1 - or_cone, 0)`% 줄인다는 것은 거리와 각도, 머리 여부가 같은 슛들 사이의 비교다. 수비수가 앞에 있는 슛과 없는 슛은 그 밖의 점에서도 다르다. 수비수가 없는 슛은 역습에서 나왔을 가능성이 높고, 그런 슛은 골키퍼의 위치와 슛하는 선수의 여유도 다르다. 계수에는 그런 차이가 함께 포함되어 있다.
+
+## VIII. 이 방법을 쓴 연구
+
+선수의 위치로 경기장을 나누는 생각은 Taki and Hasegawa (2000)에서 볼 수 있다. 선수마다 다른 선수보다 먼저 도착할 수 있는 영역을 우세 영역(dominant region)이라 부르고, 거리 대신 선수의 속도와 가속을 고려한 도달 시간으로 영역을 나누었다. 보로노이 분할은 모든 선수가 같은 속력으로 서 있는 상태에서 출발한다고 둔 특수한 경우다. Kim (2004)은 축구 경기의 선수 위치에 보로노이 분할을 적용해 팀이 차지한 넓이의 변화를 기술했다. 이 장의 II장과 같은 계산이다.
+
+Fernández and Bornn (2018)은 영역을 칸으로 나누지 않고 경기장의 각 지점에서 어느 팀이 공을 차지할 가능성이 높은지를 연속적인 값으로 추정했다. 선수의 위치와 속도, 공까지의 거리로 선수마다 영향의 면을 정의해 더한다. 공간 1장의 밀도와 같은 종류의 면이고, 추적 데이터를 전제로 한다. 슛의 모형에 선수의 배치를 넣은 연구로는 Lucey et al. (2015)이 있다. 추적 데이터에서 슛 직전의 수비수의 위치와 경기의 전개를 변수로 만들어 슛의 득점 확률을 추정했고, 위치만 쓴 모형보다 예측이 낫다고 보고했다. 회귀 1장에서 든 Anzer and Bauer (2021)도 같은 계열이다. 이 장의 VI장은 그 생각을 변수 2개로 줄인 것이다.
+
+부분 식별은 Manski (2003)에 정리되어 있다. 결측이 있는 자료에서 결측의 기제에 대한 가정 없이 말할 수 있는 범위를 먼저 구하고, 가정을 하나씩 더할 때마다 범위가 어떻게 줄어드는지를 본다. 이 장의 IV장은 그 가운데 가장 단순한 경우, 곧 관측마다 값이 놓인 구간을 아는 경우다.
+
+## 참고문헌
+
+Anzer, G., and Bauer, P. (2021). "A goal scoring probability model for shots based on synchronized positional and event data in football (soccer)." *Frontiers in Sports and Active Living* 3, 624475.
+
+Fernández, J., and Bornn, L. (2018). "Wide open spaces: A statistical technique for measuring space creation in professional soccer." *MIT Sloan Sports Analytics Conference*.
+
+Kim, S. (2004). "Voronoi analysis of a soccer game." *Nonlinear Analysis: Modelling and Control* 9(3), 233–240.
+
+Lucey, P., Bialkowski, A., Monfort, M., Carr, P., and Matthews, I. (2015). "Quality vs quantity: Improved shot prediction in soccer using strategic features from spatiotemporal data." *MIT Sloan Sports Analytics Conference*.
+
+Manski, C. F. (2003). *Partial Identification of Probability Distributions*. Springer.
+
+Okabe, A., Boots, B., Sugihara, K., and Chiu, S. N. (2000). *Spatial Tessellations: Concepts and Applications of Voronoi Diagrams* (2nd ed.). Wiley.
+
+Taki, T., and Hasegawa, J. (2000). "Visualization of dominant region in team games and its application to teamwork analysis." *Proceedings of Computer Graphics International 2000*, 227–235.

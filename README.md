@@ -18,6 +18,7 @@
 | 연쇄 | 1 | [마르코프 연쇄 — 공이 이 구역에 있으면 골이 날 확률은 얼마인가](chapters/06-possession-markov.md) |
 | 연쇄 | 2 | [패스 네트워크 — 공은 누구를 거쳐 가는가](chapters/07-pass-network.md) |
 | 공간 | 1 | [커널 밀도와 2차원 평활 — 슛과 압박은 경기장의 어디에 몰리는가](chapters/08-spatial-smoothing.md) |
+| 공간 | 2 | [보로노이 분할 — 패스를 받는 선수는 얼마나 비어 있는가](chapters/09-space-control.md) |
 
 ## 구조
 
@@ -49,7 +50,10 @@ sports-data-analysis/
 │   ├── 07-pass-network_files/             연쇄 2장 그림
 │   ├── 08-spatial-smoothing.qmd           공간 1장 원본
 │   ├── 08-spatial-smoothing.md            공간 1장 렌더 결과
-│   └── 08-spatial-smoothing_files/        공간 1장 그림
+│   ├── 08-spatial-smoothing_files/        공간 1장 그림
+│   ├── 09-space-control.qmd               공간 2장 원본
+│   ├── 09-space-control.md                공간 2장 렌더 결과
+│   └── 09-space-control_files/            공간 2장 그림
 ├── docs/
 │   ├── index.html                         소개 대시보드(GitHub Pages)
 │   └── img/                               대시보드의 그림(장의 그림을 복사)
@@ -60,6 +64,7 @@ sports-data-analysis/
 │   ├── markov.py                          경기장의 구역, 점유의 연쇄, 흡수 연쇄의 계산
 │   ├── network.py                         패스 네트워크의 인접 행렬, 중심성, 요약
 │   ├── smooth.py                          2차원 커널 밀도 추정, 벌점 스플라인 로지스틱 회귀
+│   ├── space.py                           보로노이 칸, 보이지 않는 곳까지의 거리, 받는 순간의 공간
 │   ├── metrics.py                         예측 확률의 평가(AUC, 브라이어 점수)
 │   ├── pitch.py                           경기장 그림과 그림의 공통 양식
 │   └── report.py                          본문과 표에 쓰는 수의 표기, 숫자 뒤의 조사
