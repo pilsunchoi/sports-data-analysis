@@ -3,7 +3,7 @@
 - beta_binomial_fit: 집단마다의 성공 확률이 베타 분포를 따르는 모형(베타-이항)
 - gamma_poisson_fit: 집단마다의 비율이 감마 분포를 따르는 모형(감마-포아송)
 - RandomInterceptLogit: 무작위 절편이 있는 로지스틱 회귀(라플라스 근사)
-- LinearMixed: 분산 성분이 여럿인 선형 혼합모형(REML 또는 최대우도). 방법은 운동학 2장에 있다
+- LinearMixed: 분산 성분이 여럿인 선형 혼합모형(REML 또는 최대가능도). 방법은 운동학 2장에 있다
 """
 
 import numpy as np
@@ -14,7 +14,7 @@ from statsmodels.tools.numdiff import approx_hess
 
 
 def beta_binomial_fit(y, n):
-    """y_j ~ Bin(n_j, theta_j), theta_j ~ Beta(a, b)에서 a, b의 최대우도 추정치."""
+    """y_j ~ Bin(n_j, theta_j), theta_j ~ Beta(a, b)에서 a, b의 최대가능도 추정치."""
     y, n = np.asarray(y, float), np.asarray(n, float)
 
     def nll(par):
@@ -27,7 +27,7 @@ def beta_binomial_fit(y, n):
 
 
 def gamma_poisson_fit(y, t):
-    """y_j ~ Poisson(t_j lambda_j), lambda_j ~ Gamma(모양 k, 비율 r)에서 k, r의 최대우도 추정치."""
+    """y_j ~ Poisson(t_j lambda_j), lambda_j ~ Gamma(모양 k, 비율 r)에서 k, r의 최대가능도 추정치."""
     y, t = np.asarray(y, float), np.asarray(t, float)
 
     def nll(par):
@@ -42,7 +42,7 @@ def gamma_poisson_fit(y, t):
 class RandomInterceptLogit:
     """logit P(y_ij = 1) = x_ij' beta + u_j,  u_j ~ N(0, tau^2).
 
-    주변 우도의 적분을 집단마다 라플라스 근사로 계산한다. u_j의 조건부 최빈값을 뉴턴 방법으로
+    주변 가능도의 적분을 집단마다 라플라스 근사로 계산한다. u_j의 조건부 최빈값을 뉴턴 방법으로
     찾고, 그 점에서의 2차 미분으로 적분을 근사한다.
     """
 
