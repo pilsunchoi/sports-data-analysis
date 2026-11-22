@@ -13,6 +13,7 @@
 | 데이터 | 1 | [데이터와 좌표 — 영상은 어떻게 표가 되는가](chapters/01-data-and-coordinates.md) |
 | 회귀 | 1 | [로지스틱 회귀 — 어디서 찬 슛이 골이 되는가](chapters/02-shot-logistic.md) |
 | 회귀 | 2 | [포아송 회귀 — 득점은 포아송 분포를 따르는가](chapters/03-goal-counts.md) |
+| 다층 모형 | 1 | [축소 추정 — 패스 성공률이 높은 선수는 정말 패스를 잘하는가](chapters/04-player-shrinkage.md) |
 
 ## 구조
 
@@ -29,13 +30,17 @@ sports-data-analysis/
 │   ├── 02-shot-logistic_files/            회귀 1장 그림
 │   ├── 03-goal-counts.qmd                 회귀 2장 원본
 │   ├── 03-goal-counts.md                  회귀 2장 렌더 결과
-│   └── 03-goal-counts_files/              회귀 2장 그림
+│   ├── 03-goal-counts_files/              회귀 2장 그림
+│   ├── 04-player-shrinkage.qmd            다층 모형 1장 원본
+│   ├── 04-player-shrinkage.md             다층 모형 1장 렌더 결과
+│   └── 04-player-shrinkage_files/         다층 모형 1장 그림
 ├── docs/
 │   ├── index.html                         소개 대시보드(GitHub Pages)
 │   └── img/                               대시보드의 그림(장의 그림을 복사)
 ├── sportsdata/                            모든 장이 불러 쓰는 파이썬 모듈
 │   ├── statsbomb.py                       JSON 읽기, 경기·사건·프리즈 프레임의 표
-│   ├── features.py                        슛의 표, 팀·경기의 표, 골대까지의 거리와 각도
+│   ├── features.py                        슛·패스·팀·경기의 표, 골대까지의 거리와 각도
+│   ├── multilevel.py                      두 수준 모형의 추정(베타-이항, 감마-포아송, 무작위 절편 로지스틱)
 │   ├── metrics.py                         예측 확률의 평가(AUC, 브라이어 점수)
 │   ├── pitch.py                           경기장 그림과 그림의 공통 양식
 │   └── report.py                          본문과 표에 쓰는 수의 표기, 숫자 뒤의 조사

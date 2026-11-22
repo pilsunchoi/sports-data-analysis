@@ -154,6 +154,7 @@
       <button role="tab" aria-selected="true" aria-controls="tab-overview" id="t-overview">개요</button>
       <button role="tab" aria-selected="false" aria-controls="tab-data" id="t-data">데이터</button>
       <button role="tab" aria-selected="false" aria-controls="tab-regression" id="t-regression">회귀</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-multilevel" id="t-multilevel">다층 모형</button>
     </div>
   </div>
 </nav>
@@ -175,7 +176,7 @@
           <tr><td class="b"><a href="#data" onclick="showTab('data');return false">데이터</a></td><td class="r">1</td><td>정돈된 표와 분석 단위, 좌표의 반전과 환산, 결측의 기제, 기록의 일관성 점검</td><td>영상은 어떻게 표가 되는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b" rowspan="2"><a href="#regression" onclick="showTab('regression');return false">회귀</a></td><td class="r">1</td><td>로지스틱 회귀, 이탈도와 AIC, 교차검증, 보정과 판별력</td><td>어디서 찬 슛이 골이 되는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="r">2</td><td>포아송 회귀, 오프셋, 과대산포, 음이항 모형</td><td>득점은 포아송 분포를 따르는가</td><td><span class="pill warn">초고</span></td></tr>
-          <tr><td class="b">다층 모형</td><td class="r">1</td><td>무작위 절편, 축소 추정</td><td>패스 성공률이 높은 선수는 정말 패스를 잘하는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b"><a href="#multilevel" onclick="showTab('multilevel');return false">다층 모형</a></td><td class="r">1</td><td>경험적 베이즈와 축소 추정, 무작위 절편이 있는 로지스틱 회귀</td><td>패스 성공률이 높은 선수는 정말 패스를 잘하는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b">생존 분석</td><td class="r">1</td><td>Kaplan-Meier, Cox 모형, 시간가변 공변량</td><td>첫 골은 언제 나오는가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="b" rowspan="2">연쇄</td><td class="r">1</td><td>마르코프 연쇄, 전이 행렬, 흡수 확률</td><td>공이 이 구역에 있으면 골이 날 확률은 얼마인가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="r">2</td><td>그래프의 표현, 중심성</td><td>공은 누구를 거쳐 가는가</td><td><span class="pill info">예정</span></td></tr>
@@ -341,6 +342,33 @@
     </article>
   </section>
 
+  <!-- ============ 다층 모형 ============ -->
+  <section role="tabpanel" id="tab-multilevel" aria-labelledby="t-multilevel">
+    <h2 class="h">다층 모형</h2>
+    <p class="sub lead">관측이 집단에 묶여 있고 집단마다 관측의 수가 다를 때, 집단의 값을 어떻게 추정하는가.</p>
+
+    <article class="study">
+      <div class="study-num">1</div>
+      <div class="study-body">
+        <h4 class="study-title">축소 추정 — 패스 성공률이 높은 선수는 정말 패스를 잘하는가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">표본 변동과 깔때기 그림 · 베타-이항 모형과 경험적 베이즈 · 축소 추정치와 그 예측력 · 무작위 절편이 있는 로지스틱 회귀 · 라플라스 근사 · 급내상관 · 감마-포아송 모형</p>
+        <p class="study-desc">패스 68,079개를 한 선수 676명의 성공률을 다룬다. 성공률의 순위는 패스를 몇 개 하지 않은 선수가 양 끝을 차지한다. 그 이유를 표본 변동으로 설명하고, 비율을 전체 평균 쪽으로 당기는 축소 추정치를 유도해 그것이 새 자료를 더 잘 맞히는지 확인한다. 이어 패스의 난이도를 설명변수로 넣고, 같은 방법을 회귀 2장에서 추정하지 못한 팀의 득점력에 적용한다.</p>
+        <p class="study-lbl">2022년 월드컵 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>성공률이 100%인 선수 19명 가운데 축소 추정치로 20위 안에 남는 선수는 1명이다. 패스를 절반씩 나누어 한쪽으로 다른 쪽을 예측하면 축소 추정치의 오차가 관측된 비율보다 25~34% 작다.</li>
+          <li>패스의 길이, 압박, 높이를 고려하면 선수 사이의 분산이 15% 줄어든다. 골키퍼는 성공률로는 가장 낮은 축에 들지만, 같은 종류의 패스끼리 비교하면 평균이 가장 높다.</li>
+          <li>순위에는 구간이 있다. 난이도를 고려한 추정치의 1위와 구간이 겹치는 선수가 161명이다. 팀의 경기당 득점은 관측된 범위가 0.33~2.60골인데 축소 추정치의 범위는 1.08~1.70골이다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch04_funnel.png" alt="선수별 패스의 수와 성공률의 깔때기 그림. 패스가 적은 선수는 0%에서 100%까지 퍼져 있고 패스가 많을수록 전체 성공률 주위로 모인다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/04-player-shrinkage.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/04-player-shrinkage.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/sportsdata/multilevel.py" target="_blank" rel="noopener">추정 코드</a>
+        </div>
+      </div>
+    </article>
+  </section>
+
   </div>
 </main>
 
@@ -352,7 +380,7 @@
 </footer>
 
 <script>
-  var TABS = ["overview","data","regression"];
+  var TABS = ["overview","data","regression","multilevel"];
   function showTab(name){
     TABS.forEach(function(t){
       var on = (t === name);

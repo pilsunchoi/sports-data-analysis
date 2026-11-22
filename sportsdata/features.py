@@ -43,6 +43,37 @@ def team_match_table(matches: pd.DataFrame, events: pd.DataFrame) -> pd.DataFram
     return t
 
 
+def _position_group(name) -> str:
+    if not isinstance(name, str):
+        return "미상"
+    if name == "Goalkeeper":
+        return "골키퍼"
+    if "Back" in name:
+        return "수비수"
+    if "Midfield" in name:
+        return "미드필더"
+    return "공격수"
+
+
+def pass_table(events: pd.DataFrame) -> pd.DataFrame:
+    """경기 중의 패스. 패스 하나에 한 행.
+
+    결과가 Unknown이거나 부상 때문에 일부러 내보낸 패스(Injury Clearance)는 뺀다. complete는
+    같은 팀 선수가 받았으면 1이다. group은 그 선수가 패스를 가장 많이 한 자리의 묶음이다.
+    """
+    p = events[(events["type_name"] == "Pass") & (events["period"] <= 4)
+               & ~events["pass_outcome_name"].isin(["Unknown", "Injury Clearance"])].copy()
+    p["complete"] = p["pass_outcome_name"].isna().astype(int)
+    p["length"] = p["pass_length"] * YARD
+    p["pressure"] = (p["under_pressure"] == True).astype(int)          # noqa: E712
+    p["high"] = (p["pass_height_name"] == "High Pass").astype(int)
+    p["group"] = p["position_name"].map(_position_group)
+    main = p.groupby("player_id")["group"].agg(lambda s: s.mode().iloc[0])
+    p["group"] = p["player_id"].map(main)
+    cols = ["match_id", "team_name", "player_id", "player_name", "group", "complete", "length", "pressure", "high"]
+    return p[cols].reset_index(drop=True)
+
+
 def shot_table(events: pd.DataFrame) -> pd.DataFrame:
     """경기 중의 슛. 승부차기(period 5)와 페널티킥을 뺀다. 슛 하나에 한 행."""
     s = events[(events["type_name"] == "Shot") & (events["period"] <= 4)
