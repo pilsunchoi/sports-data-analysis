@@ -19,6 +19,7 @@
 | 연쇄 | 2 | [패스 네트워크 — 공은 누구를 거쳐 가는가](chapters/07-pass-network.md) |
 | 공간 | 1 | [커널 밀도와 2차원 평활 — 슛과 압박은 경기장의 어디에 몰리는가](chapters/08-spatial-smoothing.md) |
 | 공간 | 2 | [보로노이 분할 — 패스를 받는 선수는 얼마나 비어 있는가](chapters/09-space-control.md) |
+| 차원 축소 | 1 | [주성분 분석과 군집 — 선수의 역할은 몇 가지인가](chapters/10-pca-and-clustering.md) |
 
 ## 구조
 
@@ -53,13 +54,17 @@ sports-data-analysis/
 │   ├── 08-spatial-smoothing_files/        공간 1장 그림
 │   ├── 09-space-control.qmd               공간 2장 원본
 │   ├── 09-space-control.md                공간 2장 렌더 결과
-│   └── 09-space-control_files/            공간 2장 그림
+│   ├── 09-space-control_files/            공간 2장 그림
+│   ├── 10-pca-and-clustering.qmd          차원 축소 1장 원본
+│   ├── 10-pca-and-clustering.md           차원 축소 1장 렌더 결과
+│   └── 10-pca-and-clustering_files/       차원 축소 1장 그림
 ├── docs/
 │   ├── index.html                         소개 대시보드(GitHub Pages)
 │   └── img/                               대시보드의 그림(장의 그림을 복사)
 ├── sportsdata/                            모든 장이 불러 쓰는 파이썬 모듈
 │   ├── statsbomb.py                       JSON 읽기, 경기·사건·명단·프리즈 프레임의 표
-│   ├── features.py                        슛·패스·팀·경기·골 시각의 표, 골대까지의 거리와 각도
+│   ├── features.py                        슛·패스·팀·경기·골 시각·선수별 변수의 표, 골대까지의 거리와 각도
+│   ├── cluster.py                         주성분 분석, k-평균, 실루엣, 간격 통계량, 조정 랜드 지수
 │   ├── multilevel.py                      두 수준 모형의 추정(베타-이항, 감마-포아송, 무작위 절편 로지스틱)
 │   ├── markov.py                          경기장의 구역, 점유의 연쇄, 흡수 연쇄의 계산
 │   ├── network.py                         패스 네트워크의 인접 행렬, 중심성, 요약

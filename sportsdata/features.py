@@ -132,3 +132,62 @@ def shot_table(events: pd.DataFrame) -> pd.DataFrame:
     s["goal"] = (s["shot_outcome_name"] == "Goal").astype(int)
     s["head"] = (s["shot_body_part_name"] == "Head").astype(int)
     return s.reset_index(drop=True)
+
+
+def position_role(name) -> str:
+    """포지션 이름을 여섯 가지 자리로 묶는다."""
+    if not isinstance(name, str):
+        return "미상"
+    if name == "Goalkeeper":
+        return "골키퍼"
+    if "Center Back" in name:
+        return "중앙 수비수"
+    if "Back" in name:
+        return "측면 수비수"
+    if "Defensive Midfield" in name:
+        return "수비형 미드필더"
+    if "Wing" in name or name in ("Left Midfield", "Right Midfield"):
+        return "측면 공격수"
+    if "Midfield" in name:
+        return "중앙 미드필더"
+    return "중앙 공격수"
+
+
+PLAYER_VARS = {
+    "x": "행동의 가로 위치의 평균", "width": "중앙선에서 떨어진 정도의 평균", "x_sd": "가로 위치의 표준편차",
+    "pass": "패스의 몫", "carry": "공을 가지고 이동의 몫", "shot": "슛의 몫", "dribble": "드리블의 몫",
+    "pressure": "압박의 몫", "recovery": "공을 되찾음의 몫", "clearance": "걷어내기의 몫",
+    "interception": "가로채기의 몫", "duel": "경합의 몫",
+    "pass_len": "패스 길이의 평균", "pass_fwd": "앞으로 준 패스의 비율", "pass_high": "높은 패스의 비율",
+    "cross": "크로스의 비율", "complete": "패스 성공률", "recv_final": "받음 가운데 상대 진영 3분의 1의 비율",
+}
+_TYPES = {"Pass": "pass", "Carry": "carry", "Shot": "shot", "Dribble": "dribble", "Pressure": "pressure",
+          "Ball Recovery": "recovery", "Clearance": "clearance", "Interception": "interception", "Duel": "duel"}
+
+
+def player_features(events: pd.DataFrame, min_actions: int = 300) -> pd.DataFrame:
+    """선수 한 명에 한 행. 변수의 뜻은 PLAYER_VARS에 있다. 골키퍼와 행동이 min_actions보다 적은 선수는 뺀다.
+
+    행동은 _TYPES의 아홉 유형이고 몫은 그 선수의 행동 가운데 그 유형이 차지하는 비율이다. role은 그 선수의
+    사건에 가장 많이 적힌 자리다. 출전 시간은 쓰지 않는다.
+    """
+    e = events[(events["period"] <= 4) & events["player_id"].notna()]
+    a = e[e["type_name"].isin(_TYPES) & e["x"].notna()].copy()
+    a["kind"] = a["type_name"].map(_TYPES)
+    g = a.groupby("player_id")
+    out = pd.DataFrame({"name": g["player_name"].first(), "team": g["team_name"].first(), "actions": g.size(),
+                        "x": g["x"].mean(), "width": (a["y"] - 40).abs().groupby(a["player_id"]).mean(), "x_sd": g["x"].std()})
+    share = pd.crosstab(a["player_id"], a["kind"], normalize="index")
+    out = out.join(share[list(_TYPES.values())])
+    p = a[(a["type_name"] == "Pass") & ~a["pass_outcome_name"].isin(["Unknown", "Injury Clearance"])]
+    gp = p.groupby("player_id")
+    out["pass_len"] = gp["pass_length"].mean() * YARD
+    out["pass_fwd"] = (p["pass_angle"].abs() < np.pi / 4).groupby(p["player_id"]).mean()
+    out["pass_high"] = (p["pass_height_name"] == "High Pass").groupby(p["player_id"]).mean()
+    out["cross"] = (p["pass_cross"] == True).groupby(p["player_id"]).mean()          # noqa: E712
+    out["complete"] = p["pass_outcome_name"].isna().groupby(p["player_id"]).mean()
+    r = e[(e["type_name"] == "Ball Receipt*") & e["ball_receipt_outcome_name"].isna()]
+    out["recv_final"] = (r["x"] >= 80).groupby(r["player_id"]).mean()
+    out["role"] = e.groupby("player_id")["position_name"].agg(lambda s: s.mode().iloc[0]).map(position_role)
+    out = out[(out["role"] != "골키퍼") & (out["actions"] >= min_actions)].dropna()
+    return out.reset_index()
