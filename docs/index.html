@@ -155,6 +155,7 @@
       <button role="tab" aria-selected="false" aria-controls="tab-data" id="t-data">데이터</button>
       <button role="tab" aria-selected="false" aria-controls="tab-regression" id="t-regression">회귀</button>
       <button role="tab" aria-selected="false" aria-controls="tab-multilevel" id="t-multilevel">다층 모형</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-survival" id="t-survival">생존 분석</button>
     </div>
   </div>
 </nav>
@@ -177,7 +178,7 @@
           <tr><td class="b" rowspan="2"><a href="#regression" onclick="showTab('regression');return false">회귀</a></td><td class="r">1</td><td>로지스틱 회귀, 이탈도와 AIC, 교차검증, 보정과 판별력</td><td>어디서 찬 슛이 골이 되는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="r">2</td><td>포아송 회귀, 오프셋, 과대산포, 음이항 모형</td><td>득점은 포아송 분포를 따르는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b"><a href="#multilevel" onclick="showTab('multilevel');return false">다층 모형</a></td><td class="r">1</td><td>경험적 베이즈와 축소 추정, 무작위 절편이 있는 로지스틱 회귀</td><td>패스 성공률이 높은 선수는 정말 패스를 잘하는가</td><td><span class="pill warn">초고</span></td></tr>
-          <tr><td class="b">생존 분석</td><td class="r">1</td><td>Kaplan-Meier, Cox 모형, 시간가변 공변량</td><td>첫 골은 언제 나오는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b"><a href="#survival" onclick="showTab('survival');return false">생존 분석</a></td><td class="r">1</td><td>Kaplan-Meier, Cox 모형, 시간가변 공변량, 불멸 시간 편향</td><td>첫 골은 언제 나오는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b" rowspan="2">연쇄</td><td class="r">1</td><td>마르코프 연쇄, 전이 행렬, 흡수 확률</td><td>공이 이 구역에 있으면 골이 날 확률은 얼마인가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="r">2</td><td>그래프의 표현, 중심성</td><td>공은 누구를 거쳐 가는가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="b" rowspan="2">공간</td><td class="r">1</td><td>2차원 커널 밀도, 2차원 평활</td><td>슛과 압박은 경기장의 어디에 몰리는가</td><td><span class="pill info">예정</span></td></tr>
@@ -369,6 +370,32 @@
     </article>
   </section>
 
+  <!-- ============ 생존 분석 ============ -->
+  <section role="tabpanel" id="tab-survival" aria-labelledby="t-survival">
+    <h2 class="h">생존 분석</h2>
+    <p class="sub lead">사건이 일어날 때까지의 시간을 다룬다. 관측이 끝날 때까지 사건이 일어나지 않은 경우와 도중에 바뀌는 조건을 어떻게 다루는가.</p>
+
+    <article class="study">
+      <div class="study-num">1</div>
+      <div class="study-body">
+        <h4 class="study-title">사건까지의 시간 — 첫 골은 언제 나오는가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">중도절단 · 생존 함수와 Kaplan-Meier 추정 · 로그 순위 검정 · 위험 함수와 사람·시간 · Cox 모형과 부분 우도 · 시간가변 공변량과 불멸 시간 편향 · 되풀이되는 사건과 군집 강건 표준오차</p>
+        <p class="study-desc">한 팀이 경기에서 첫 골을 넣을 때까지의 시간을 다룬다. 팀·경기 128개 가운데 42개는 경기가 끝날 때까지 골을 넣지 못했다. 이 관측을 버리지 않고 쓰는 방법을 설명하고, 득점의 위험이 경기 시간에 따라 어떻게 변하는지, 점수 상태가 위험과 관련되는지를 본다.</p>
+        <p class="study-lbl">2022년 월드컵 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>골을 넣은 팀만으로 구한 첫 골 시각의 평균은 46.8분이지만, 골을 넣지 못한 팀을 중도절단으로 다루면 중앙 생존 시간은 66.3분이다.</li>
+          <li>득점의 위험은 일정하지 않다. 전반의 첫 30분은 한 팀의 90분당 0.73골이고 그 뒤로는 1.35골이다.</li>
+          <li>먼저 실점한 팀을 처음부터 정해진 집단처럼 비교하면 첫 골의 위험비가 0.40으로 나온다. 실점한 뒤의 시간만 지고 있는 시간으로 세면 위험비는 1.06(0.65~1.72)이다. 앞의 값은 분석이 만들어 낸 것이다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch05_km.png" alt="팀의 첫 골까지의 시간의 Kaplan-Meier 곡선. 아직 골을 넣지 못했을 확률이 45분에 66%, 90분에 36%로 내려가고, 위험이 일정하다고 본 지수 분포의 곡선보다 위에 있다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/05-time-to-goal.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/05-time-to-goal.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+        </div>
+      </div>
+    </article>
+  </section>
+
   </div>
 </main>
 
@@ -380,7 +407,7 @@
 </footer>
 
 <script>
-  var TABS = ["overview","data","regression","multilevel"];
+  var TABS = ["overview","data","regression","multilevel","survival"];
   function showTab(name){
     TABS.forEach(function(t){
       var on = (t === name);

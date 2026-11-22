@@ -43,6 +43,55 @@ def team_match_table(matches: pd.DataFrame, events: pd.DataFrame) -> pd.DataFram
     return t
 
 
+def goal_table(events: pd.DataFrame) -> pd.DataFrame:
+    """전반과 후반의 골. 골 하나에 한 행이고 자책골은 골을 얻은 팀의 것으로 센다.
+
+    t는 경기가 시작된 뒤 실제로 흐른 경기 시간(분)이다. 전반은 timestamp 그대로, 후반은 그
+    경기의 전반 길이에 timestamp를 더한다. 하프타임의 휴식은 세지 않는다.
+    """
+    e = events[events["period"] <= 2].copy()
+    e["sec"] = pd.to_timedelta(e["timestamp"]).dt.total_seconds()
+    half = e.groupby(["match_id", "period"])["sec"].max().unstack()
+    g = e[((e["type_name"] == "Shot") & (e["shot_outcome_name"] == "Goal")) | (e["type_name"] == "Own Goal For")].copy()
+    g["t"] = (g["sec"] + np.where(g["period"] == 2, g["match_id"].map(half[1]), 0)) / 60
+    out = g[["match_id", "team_name", "period", "t"]].rename(columns={"team_name": "team"})
+    out.attrs["half1"] = (half[1] / 60).to_dict()                 # 경기마다 전반의 길이(분)
+    out.attrs["end"] = ((half[1] + half[2]) / 60).to_dict()       # 경기마다 후반이 끝난 시각(분)
+    return out.sort_values(["match_id", "t"]).reset_index(drop=True)
+
+
+def scoring_episodes(matches: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
+    """한 팀의 한 경기를 점수가 바뀌는 시각과 하프타임에서 자른 구간. 구간 하나에 한 행.
+
+    구간 (start, stop] 동안 그 팀의 상황은 바뀌지 않는다. event는 구간의 끝에서 그 팀이 골을
+    넣었으면 1이다. diff는 구간 동안의 점수 차(그 팀의 골에서 상대의 골을 뺀 값), own과 opp는
+    그때까지 그 팀과 상대가 넣은 골의 수다.
+    """
+    goals = goal_table(events)
+    half1, end = goals.attrs["half1"], goals.attrs["end"]
+    rows = []
+    for m in matches.itertuples():
+        gm = goals[goals["match_id"] == m.match_id]
+        cuts = sorted(set(gm["t"]) | {half1[m.match_id], end[m.match_id]})
+        for team, opp in ((m.home_team_home_team_name, m.away_team_away_team_name),
+                          (m.away_team_away_team_name, m.home_team_home_team_name)):
+            start, own, against = 0.0, 0, 0
+            for stop in cuts:
+                scored = gm[(gm["t"] == stop)]
+                ev_own = int((scored["team"] == team).sum())
+                ev_opp = int((scored["team"] == opp).sum())
+                rows.append({"match_id": m.match_id, "team": team, "opp": opp, "start": start, "stop": stop,
+                             "event": int(ev_own > 0), "own": own, "against": against, "diff": own - against,
+                             "second_half": int(start >= half1[m.match_id]),
+                             "knockout": int(m.competition_stage_name != "Group Stage")})
+                own += ev_own
+                against += ev_opp
+                start = stop
+    d = pd.DataFrame(rows)
+    d["tm"] = d["match_id"].astype(str) + ":" + d["team"]
+    return d
+
+
 def _position_group(name) -> str:
     if not isinstance(name, str):
         return "미상"
