@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>스포츠 데이터 분석 I</title>
+<meta name="description" content="공개 축구 데이터에 기본적인 분석 방법을 하나씩 적용하며 설명하는 교재. 그 첫 번째로 2022년 카타르 월드컵 64경기의 StatsBomb 공개 데이터를 다룬다.">
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#1b2430; --muted:#5b6673;
+    --line:#e3e7ec; --brand:#1f6feb; --brand-soft:#eaf1fe;
+    --ok:#137a3f; --ok-soft:#e6f4ec; --warn:#8a5b00; --warn-soft:#fdf3df;
+    --info:#4b4f8a; --info-soft:#ecedf7; --code:#0f172a;
+    --radius:12px; --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.10);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    word-break:keep-all; overflow-wrap:break-word;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",Roboto,sans-serif;
+    line-height:1.6; -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:960px; margin:0 auto; padding:0 16px}
+  a{color:var(--brand); text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}
+
+  /* header — 헤더 색은 대시보드마다 다르다. 이 저서는 연한 초록 */
+  header.top{background:#e2f0dc; border-bottom:1px solid #bcd9b2}
+  .brand{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:22px 0 6px}
+  .brand h1{font-size:1.95rem;font-weight:700;margin:0;letter-spacing:-.01em}
+  .brand .tag{color:#2e6a24;font-size:1.17rem;font-weight:700}
+  .brand .wip{display:inline-block;padding:1px 10px;border-radius:999px;background:#efedf9;color:#4a3aa7;font-size:.8rem;font-weight:700;vertical-align:3px}
+  .lede{color:var(--muted);margin:0 0 16px;font-size:.98rem}
+
+  /* tabs */
+  nav.tabs{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);
+    backdrop-filter:saturate(1.4) blur(6px); border-bottom:1px solid var(--line)}
+  .tabrow{display:flex;gap:4px;overflow-x:auto;padding:8px 0;scrollbar-width:none}
+  .tabrow::-webkit-scrollbar{display:none}
+  .tabrow button{
+    flex:0 0 auto; border:1px solid transparent; background:transparent; color:var(--ink);
+    font:inherit; font-weight:700; font-size:.98rem; padding:11px 14px; border-radius:999px; cursor:pointer; white-space:nowrap;
+  }
+  .tabrow button:hover{background:var(--brand-soft)}
+  .tabrow button[aria-selected="true"]{color:var(--brand);background:var(--brand-soft);border-color:#d4e2fb}
+
+  main{padding:22px 0 8px}
+  section[role=tabpanel]{display:none;animation:fade .18s ease}
+  section[role=tabpanel].active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  h2.h{font-size:1.56rem;margin:2px 0 6px}
+  .sub{color:var(--muted);margin:6px 0 14px;font-size:.95rem}
+  .sub.lead{color:var(--ink);font-weight:600;font-size:1.02rem;margin:0 0 18px}
+  h3{font-size:1.2rem;margin:30px 0 8px;letter-spacing:-.01em}
+  section[role=tabpanel] > h3{border-top:1px solid var(--line);padding-top:24px}
+  section[role=tabpanel] > h3:first-of-type{border-top:none;padding-top:0;margin-top:22px}
+  p{margin:8px 0}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin:14px 0}
+  .panel > :first-child{margin-top:0}
+  .panel > :last-child{margin-bottom:0}
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+  .stat .n{font-size:1.5rem;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+  .stat .k{color:var(--muted);font-size:.82rem;margin-top:2px}
+  @media (max-width:560px){ .stats{grid-template-columns:repeat(2,1fr)} }
+
+  .tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:14px 0;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:440px;font-size:.9rem}
+  caption{caption-side:top;text-align:left;font-weight:700;padding:10px 12px 2px;font-size:.93rem}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:#f2f5f9;color:var(--muted);font-weight:700;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td.r,th.r{text-align:right;white-space:nowrap}
+  td.s{font-size:.84rem;color:var(--muted)}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.78rem;font-weight:700;line-height:1.7}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.info{background:var(--info-soft);color:var(--info)}
+
+  .note{background:var(--info-soft);border:1px solid #dcdef2;border-left:3px solid var(--info);
+    border-radius:10px;padding:10px 14px;margin:14px 0;font-size:.9rem}
+  .note b{color:var(--info)}
+  .note.warn{background:var(--warn-soft);border-color:#f0e2c0;border-left-color:var(--warn)}
+  .note.warn b{color:var(--warn)}
+
+  figure.fig{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow)}
+  figure.fig svg{display:block;width:100%;height:auto}
+  figure.fig figcaption{color:var(--muted);font-size:.84rem;margin-top:8px}
+
+  /* 장 카드 */
+  .group{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .group .k{color:var(--muted);font-size:.9rem;font-weight:400}
+  .study{display:grid;grid-template-columns:56px 1fr;gap:18px;border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:20px 22px;margin:14px 0;box-shadow:var(--shadow)}
+  .study-num{font-size:2.3rem;line-height:1;color:var(--brand);font-weight:700}
+  .study-num-none{font-size:.95rem;line-height:1.6;color:var(--muted)}
+  .study-body>:first-child{margin-top:0}
+  .study-title{font-size:1.1rem;line-height:1.3;margin:0 0 4px;font-weight:700;border:none;padding:0}
+  .study-title .pill{margin-left:10px;vertical-align:2px;font-size:.74rem}
+  .study-sub{color:var(--muted);margin:0 0 12px;font-size:.95rem}
+  .study-desc{margin:0 0 12px;line-height:1.6;font-size:.96rem}
+  .study-points{list-style:disc;padding-left:20px;margin:0 0 16px}
+  .study-points li{margin:6px 0;line-height:1.55;font-size:.94rem}
+  .study-points li::marker{color:var(--brand)}
+  .study-figs{margin:0 0 16px}
+  .study-figs img{display:block;max-width:100%;max-height:260px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .study-links{display:flex;flex-wrap:wrap;gap:8px 20px;border-top:1px solid var(--line);padding-top:13px}
+  .study-links a{font-weight:600;font-size:.92rem}
+  .study-links a::after{content:" \2197"}
+  .study-links .lbl{color:var(--muted);font-size:.86rem;font-weight:600}
+  @media (max-width:560px){
+    .study{grid-template-columns:1fr;padding:16px;gap:2px}
+    .study-num{font-size:1.9rem;margin-bottom:2px}
+  }
+
+  .study-sub::before{content:"다루는 방법";display:inline-block;margin-right:8px;padding:1px 9px;border-radius:999px;background:var(--info-soft);color:var(--info);font-size:.74rem;font-weight:700;vertical-align:1px}
+  .study-lbl{margin:0 0 4px;color:var(--muted);font-size:.8rem;font-weight:700;letter-spacing:.02em}
+  .map td.b{white-space:nowrap;font-weight:700}
+  .map td.r{color:var(--muted)}
+  .empty{border:1px dashed #cdd4dd;border-radius:var(--radius);background:#fff;padding:22px;text-align:center;color:var(--muted);margin:16px 0;font-size:.92rem}
+
+  footer{border-top:1px solid var(--line);margin-top:26px;padding:20px 0 40px;color:var(--muted);font-size:.84rem;background:#fff}
+  footer p{margin:6px 0}
+
+  @media (max-width:560px){
+    table{min-width:0;font-size:.85rem}
+    th,td{padding:7px 9px;overflow-wrap:anywhere}
+    thead th{white-space:normal}
+  }
+  @media (max-width:420px){
+    .brand h1{font-size:1.625rem}
+    .stat .n{font-size:1.28rem}
+    h2.h{font-size:1.4rem}
+  }
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>스포츠 데이터 분석 I</h1>
+      <span class="tag">공개 축구 데이터로 배우는 분석 방법</span>
+      <span class="wip">집필 중</span>
+    </div>
+    <p class="lede">축구 경기의 공개 데이터에 기본적인 분석 방법을 하나씩 적용하며 설명하는 교재다. 방법마다 수식과 가정, 추정 절차, 결과를 해석하는 법을 자세히 적는다. 그 첫 번째로 2022년 카타르 월드컵 64경기의 <a href="https://github.com/statsbomb/open-data" target="_blank" rel="noopener">StatsBomb 공개 데이터</a>를 다룬다.</p>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="wrap">
+    <div class="tabrow" role="tablist" aria-label="대시보드 탭">
+      <button role="tab" aria-selected="true" aria-controls="tab-overview" id="t-overview">개요</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-data" id="t-data">데이터</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-regression" id="t-regression">회귀</button>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap">
+
+  <!-- ============ 개요 ============ -->
+  <section role="tabpanel" id="tab-overview" aria-labelledby="t-overview" class="active">
+    <h2 class="h">개요</h2>
+    <p class="sub lead">한 대회의 공개 축구 데이터에 기본적인 분석 방법을 하나씩 적용하며 설명한다.</p>
+
+    <h3>분석 방법의 묶음</h3>
+    <p>장은 방법의 계열로 묶었다. 묶음의 순서는 데이터의 해상도를 따른다. 공에 일어난 사건의 기록에서 시작해, 사건 순간의 선수 배치, 초당 수십 번의 위치 추적으로 간다. 쓴 장이 있는 묶음은 이름을 누르면 그 탭으로 간다.</p>
+    <div class="tblwrap">
+      <table class="map">
+        <thead><tr><th>묶음</th><th>장</th><th>다루는 방법</th><th>분석 질문</th><th>상태</th></tr></thead>
+        <tbody>
+          <tr><td class="b"><a href="#data" onclick="showTab('data');return false">데이터</a></td><td class="r">1</td><td>정돈된 표와 분석 단위, 좌표의 반전과 환산, 결측의 기제, 기록의 일관성 점검</td><td>영상은 어떻게 표가 되는가</td><td><span class="pill warn">초고</span></td></tr>
+          <tr><td class="b" rowspan="2"><a href="#regression" onclick="showTab('regression');return false">회귀</a></td><td class="r">1</td><td>로지스틱 회귀, 이탈도와 AIC, 교차검증, 보정과 판별력</td><td>어디서 찬 슛이 골이 되는가</td><td><span class="pill warn">초고</span></td></tr>
+          <tr><td class="r">2</td><td>포아송 회귀, 오프셋, 과대산포, 음이항 모형</td><td>득점은 포아송 분포를 따르는가</td><td><span class="pill warn">초고</span></td></tr>
+          <tr><td class="b">다층 모형</td><td class="r">1</td><td>무작위 절편, 축소 추정</td><td>패스 성공률이 높은 선수는 정말 패스를 잘하는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b">생존 분석</td><td class="r">1</td><td>Kaplan-Meier, Cox 모형, 시간가변 공변량</td><td>첫 골은 언제 나오는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b" rowspan="2">연쇄</td><td class="r">1</td><td>마르코프 연쇄, 전이 행렬, 흡수 확률</td><td>공이 이 구역에 있으면 골이 날 확률은 얼마인가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="r">2</td><td>그래프의 표현, 중심성</td><td>공은 누구를 거쳐 가는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b" rowspan="2">공간</td><td class="r">1</td><td>2차원 커널 밀도, 2차원 평활</td><td>슛과 압박은 경기장의 어디에 몰리는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="r">2</td><td>보로노이 분할, 보인 영역의 처리</td><td>패스를 받는 선수는 얼마나 비어 있는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b">차원 축소</td><td class="r">1</td><td>주성분 분석, 군집</td><td>선수의 역할은 몇 가지인가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b" rowspan="2">운동학</td><td class="r">1</td><td>위치의 수치 미분, 평활, 속도와 가속도</td><td>위치 기록에서 속도를 어떻게 얻는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="r">2</td><td>반복 측정의 선형 혼합모형</td><td>선수는 후반에 덜 뛰는가</td><td><span class="pill info">예정</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub">장 번호는 탭마다 1부터 매긴다. 예정인 장의 구성은 쓰면서 바뀔 수 있다.</p>
+
+    <h3>축구 데이터 — 영상에서 무엇을 뽑는가</h3>
+    <div class="panel">
+      <p><b>영상에서 온 데이터.</b> 축구 경기의 데이터는 경기 영상에서 뽑은 것이다. 선수의 위치와 속도, 가속도, 자세는 운동학(kinematics)의 측정값이고, 이 책이 재활과 운동 과학의 분석과 이어지는 지점이 여기다.</p>
+      <p><b>네 층.</b> 뽑는 대상이 세밀해지는 순서로 네 가지가 있다. 사건 데이터(event data)는 패스와 슛처럼 공에 일어난 일을 기록원이 영상을 보며 적은 것이다. 프리즈 프레임(freeze frame)은 사건 순간의 화면에 잡힌 선수들의 위치다. 추적 데이터(tracking data)는 선수 22명과 공의 위치를 초당 수십 번 기록한 것이다. 자세 데이터는 관절 단위의 3차원 위치다.</p>
+      <p><b>이 책이 쓰는 것.</b> 지금까지 쓴 장은 가입 없이 받을 수 있는 사건 데이터와 프리즈 프레임만 쓴다. 영상 자체는 공개되어 있지 않고, 이 책이 다루는 것은 영상에서 뽑은 좌표와 기록이다.</p>
+    </div>
+    <figure class="fig">
+      <img src="img/ch01_coordinates.png" alt="사건 데이터의 좌표계. 가로 120, 세로 80이고 원점은 왼쪽 위다. 페널티 구역, 골대, 페널티 마크의 좌표가 적혀 있다" style="display:block;max-width:100%;max-height:360px;margin:0 auto" loading="lazy">
+      <figcaption>사건 데이터의 좌표계. 사건을 한 팀이 언제나 왼쪽에서 오른쪽으로 공격하도록 적혀 있고, 좌표의 1단위는 1야드로 읽는다.</figcaption>
+    </figure>
+
+    <h3>코드와 데이터</h3>
+    <div class="panel">
+      <p><b>장의 원본.</b> 장마다 원본은 파이썬 코드가 든 Quarto 문서 하나이고, GitHub에서 읽는 것은 그 렌더 결과다. 본문의 수치는 손으로 적지 않고 코드가 낸다.</p>
+      <p><b>왜 파이썬인가.</b> 자매 교재인 <a href="https://pilsunchoi.github.io/rehab-data-analysis/" target="_blank" rel="noopener">재활 데이터 분석 I</a>은 R로 썼다. 이 책은 파이썬으로 써서, 로지스틱 회귀와 생존 분석처럼 두 책에 함께 나오는 방법을 두 언어로 볼 수 있게 했다. 축구의 추적 데이터를 읽는 도구도 파이썬 쪽에 많다.</p>
+      <p><b>공통 코드.</b> 모든 장은 같은 모듈로 데이터를 읽고 분석용 표를 만든다. 사건 파일의 구조를 읽는 일이 데이터 1장의 내용이므로, 전용 패키지를 쓰지 않고 JSON을 직접 읽는다.</p>
+      <div class="study-links" style="border-top:none;padding-top:0">
+        <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/sportsdata/statsbomb.py" target="_blank" rel="noopener">sportsdata/statsbomb.py — 읽기와 분석용 표</a>
+        <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/scripts/fetch_statsbomb.py" target="_blank" rel="noopener">데이터를 받는 스크립트</a>
+        <a href="https://github.com/pilsunchoi/sports-data-analysis#readme" target="_blank" rel="noopener">실행 방법(README)</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 데이터 ============ -->
+  <section role="tabpanel" id="tab-data" aria-labelledby="t-data">
+    <h2 class="h">데이터</h2>
+    <p class="sub lead">축구 경기를 무엇으로 기록하고, 이 책은 어떤 데이터를 쓰는가.</p>
+
+    <h3>무엇이 기록되어 있는가</h3>
+    <p>이 책이 지금 쓰는 데이터는 사건의 표와 프리즈 프레임의 표 둘이다. 사건의 표는 사건 하나가 한 행이고, 프리즈 프레임의 표는 사건 순간 화면에 보인 선수 한 명이 한 행이다.</p>
+    <div class="tblwrap">
+      <table>
+        <caption>두 표의 주요 항목</caption>
+        <thead><tr><th>표</th><th>항목</th><th>값</th><th>무엇을 보나</th></tr></thead>
+        <tbody>
+          <tr><td>사건</td><td>유형(type)</td><td>33가지</td><td>패스, 받음, 이동, 압박, 슛 등. 패스와 받음, 이동이 전체의 79%</td></tr>
+          <tr><td>사건</td><td>시각(period, timestamp)</td><td>구간과 그 안의 시간</td><td>전반, 후반, 연장 전반, 연장 후반, 승부차기의 구간마다 0에서 다시 시작</td></tr>
+          <tr><td>사건</td><td>위치(location)</td><td>가로 0~120, 세로 0~80</td><td>사건이 일어난 지점. 소수 첫째 자리까지 기록</td></tr>
+          <tr><td>사건</td><td>선수, 팀, 점유(possession)</td><td>이름과 번호</td><td>누가 했는지, 한 팀이 공을 계속 가진 묶음 가운데 몇 번째인지</td></tr>
+          <tr><td>사건</td><td>유형별 항목</td><td>유형마다 다름</td><td>패스의 끝 위치와 받는 선수, 슛의 결과와 부위 등</td></tr>
+          <tr><td>프리즈 프레임</td><td>보인 영역(visible area)</td><td>다각형</td><td>그 순간 카메라에 보인 경기장의 범위. 평균적으로 경기장의 29%</td></tr>
+          <tr><td>프리즈 프레임</td><td>선수의 위치와 표시</td><td>좌표, 같은 팀 여부, 골키퍼 여부</td><td>화면에 보인 선수. 누구인지는 없다. 프레임 하나에 평균 15.1명</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>우리가 쓰는 데이터 — 2022년 월드컵의 StatsBomb 공개 데이터</h3>
+    <div class="panel">
+      <p><b>무엇인가.</b> 2022년 11월 20일부터 12월 18일까지 카타르에서 32개 나라가 치른 64경기의 사건 데이터와 프리즈 프레임이다. 데이터 회사 StatsBomb이 연구와 분석을 위해 무료로 공개했다.</p>
+      <p><b>왜 이 데이터인가.</b> 방법을 보이는 것이 목적이므로 많은 경기가 필요하지 않다. 한 대회는 누구나 아는 경기들이어서 결과를 확인하기 쉽고, 같은 64경기에 대해 사건, 선수 배치, 위치 추적, 자세의 데이터가 각각 공개되어 있어 층을 올라가며 쓸 수 있다.</p>
+      <p><b>어디서 받나.</b> <a href="https://github.com/statsbomb/open-data" target="_blank" rel="noopener">StatsBomb의 GitHub 저장소</a>에서 가입 없이 받는다. 이 저장소의 스크립트가 필요한 파일만 받아 온다.</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n">64</div><div class="k">경기 (32개 팀)</div></div>
+      <div class="stat"><div class="n">234,637</div><div class="k">사건</div></div>
+      <div class="stat"><div class="n">680</div><div class="k">사건을 기록한 선수</div></div>
+      <div class="stat"><div class="n">1,430</div><div class="k">슛 (페널티킥과 승부차기 제외)</div></div>
+      <div class="stat"><div class="n">172</div><div class="k">골 (자책골 3개 포함)</div></div>
+      <div class="stat"><div class="n">87%</div><div class="k">프리즈 프레임이 있는 사건</div></div>
+    </div>
+    <p class="sub">2026-11-22에 받은 판을 1장(<a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/01-data-and-coordinates.md" target="_blank" rel="noopener">데이터와 좌표</a>)이 계산한 값이다. 장마다 분석에 쓴 관측은 그 장의 표본 정의에 따라 다르다.</p>
+
+    <h3>분석 단위와 정의</h3>
+    <div class="tblwrap">
+      <table>
+        <caption>공통 정의</caption>
+        <thead><tr><th>항목</th><th>정의</th></tr></thead>
+        <tbody>
+          <tr><td>분석 단위(unit of analysis)</td><td>질문이 정한다. 슛이 골이 될 확률은 슛이, 한 경기의 득점은 팀·경기가 단위다. 사건은 선수, 팀, 경기에 겹쳐 속하므로 그 아래의 관측은 독립이 아니다</td></tr>
+          <tr><td>승부차기</td><td>뺀다. 분석은 전반부터 연장 후반까지의 사건만 쓴다</td></tr>
+          <tr><td>좌표의 방향</td><td>팀마다 자기 공격 방향이 오른쪽이다. 두 팀의 위치를 한 경기장에 놓을 때는 한쪽을 x' = 120 - x, y' = 80 - y로 반전한다</td></tr>
+          <tr><td>좌표의 단위</td><td>1단위를 1야드(0.9144m)로 읽는다. 골대 근처에서는 정확하고, 경기장을 가로지르는 긴 거리는 실제보다 최대 4.5~7.6% 크게 나올 수 있다</td></tr>
+          <tr><td>프리즈 프레임</td><td>화면 밖의 선수는 결측이고 그 결측은 선수의 위치에 의존한다. 보이는 선수의 수를 그대로 세지 않고 보인 영역 안에서만 진술한다</td></tr>
+          <tr><td>만들어 낸 사건</td><td>패스를 받은 사건과 공을 가지고 이동한 사건은 앞뒤 사건의 위치를 옮겨 적은 것이어서 독립인 측정으로 세지 않는다</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warn"><b>원데이터는 이 저장소에 없다.</b> StatsBomb의 이용 약관에 따라 데이터를 다시 배포하지 않는다. 약관은 데이터와 그것으로 한 분석의 상업적 이용도 금지한다. 받는 스크립트를 돌리면 같은 파일을 직접 받아 모든 장을 다시 렌더할 수 있다.</div>
+
+    <h3>이 데이터를 다루는 장</h3>
+    <p>1장은 다른 탭의 모든 장이 쓰는 데이터와 좌표를 다룬다. 분석 방법의 장을 읽기 전에 먼저 읽는다.</p>
+
+    <article class="study">
+      <div class="study-num">1</div>
+      <div class="study-body">
+        <h4 class="study-title">데이터와 좌표 — 영상은 어떻게 표가 되는가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">정돈된 표와 열쇠 · 분석 단위 · 좌표의 반전과 단위 환산 · 거리와 각도 · 반올림 오차와 끝자리 선호 · 결측의 기제 · 내적 일관성과 관측자 간 신뢰도</p>
+        <p class="study-desc">경기 영상에서 무엇을 어떻게 기록했는지, 여러 겹으로 겹친 기록이 어떤 표가 되는지, 좌표를 어떻게 읽는지를 본다. 기록이 스스로 모순되지 않는지를 중복된 값과 물리적 한계로 점검하고, 뒤 장이 따를 규칙을 정한다.</p>
+        <p class="study-lbl">2022년 월드컵 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>경기장의 선은 야드로 정확히 맞지만 경기장 전체는 실제(105m, 68m)보다 길이로 4.5%, 너비로 7.6% 크게 적혀 있다. 좌표와 실제 길이의 관계는 1차식 하나로 정해지지 않는다.</li>
+          <li>프리즈 프레임의 결측은 위치에 의존한다. 상대 골키퍼는 사건이 상대 진영에서 일어난 프레임의 55%에서 보이고 중앙에서 일어난 프레임에서는 3%에서만 보인다.</li>
+          <li>성공한 패스를 받은 위치는 100% 패스가 끝난 위치와 같다. 사건의 절반을 차지하는 받음과 이동은 따로 관측한 값이 아니다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch01_freeze_frame.png" alt="결승전 첫 골의 프리즈 프레임. 경기장 오른쪽 끝의 일부만 보인 영역으로 칠해져 있고 그 안에 선수 9명이 찍혀 있다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/01-data-and-coordinates.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/01-data-and-coordinates.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ============ 회귀 ============ -->
+  <section role="tabpanel" id="tab-regression" aria-labelledby="t-regression">
+    <h2 class="h">회귀</h2>
+    <p class="sub lead">결과가 연속인 값이 아닐 때의 회귀를 다룬다. 결과가 골인지 아닌지의 둘일 때와 0, 1, 2로 세는 수일 때다.</p>
+
+    <article class="study">
+      <div class="study-num">1</div>
+      <div class="study-body">
+        <h4 class="study-title">로지스틱 회귀 — 어디서 찬 슛이 골이 되는가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">로짓과 승산비 · 최대우도 추정 · 이탈도, 우도비 검정, AIC · 다중공선성과 교란 · 예측 확률과 기대 득점 · 경기 단위 교차검증 · 보정, 판별력, 브라이어 점수</p>
+        <p class="study-desc">페널티킥과 승부차기를 뺀 슛 1,430개(골 152개)에서 슛이 골이 될 확률을 골대까지의 거리, 골대가 보이는 각도, 머리로 했는지로 설명한다. 슛마다의 확률을 더한 기대 득점(expected goals)의 가장 단순한 형태를 만들고, 그 확률이 믿을 만한지를 적합에 쓰지 않은 경기로 평가한다.</p>
+        <p class="study-lbl">2022년 월드컵 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>골대에서 1m 멀어지면 득점의 승산이 14% 줄어든다. 각도를 함께 넣으면 거리의 계수가 작아지고 표준오차가 커진다. 거리와 각도의 상관이 -0.75이기 때문이다.</li>
+          <li>머리로 한 슛은 골이 된 비율이 11.1%로 그 밖의 10.5%와 거의 같지만, 거리와 각도가 같을 때의 승산비는 0.28이다. 헤딩은 골대 가까이에서 하므로 단순 비교에서는 불리함이 가려진다.</li>
+          <li>경기 단위 교차검증에서 AUC는 0.775, 보정 기울기는 0.97이다. 예측 확률의 크기는 맞지만 브라이어 점수는 기준보다 13% 줄어드는 데 그친다. 슛 하나의 결과는 위치를 알아도 대부분 예측할 수 없다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch02_distance_curve.png" alt="골대까지의 거리별 골이 된 비율과 로지스틱 회귀의 예측 확률 곡선. 6m 안에서 40%를 넘고 20m 밖에서는 5% 아래로 내려간다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/02-shot-logistic.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/02-shot-logistic.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+        </div>
+      </div>
+    </article>
+
+    <article class="study">
+      <div class="study-num">2</div>
+      <div class="study-body">
+        <h4 class="study-title">포아송 회귀 — 득점은 포아송 분포를 따르는가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">포아송 분포와 그 점검 · 로그 연결과 비율비 · 노출과 오프셋 · 과대산포의 진단 · 준포아송과 음이항 모형 · 팀별 공격과 수비 모수 · 두 팀의 득점의 독립성</p>
+        <p class="study-desc">한 팀이 한 경기의 전반과 후반에 넣은 골의 수를 다룬다. 관측은 128개다. 득점이 포아송 분포에서 얼마나 벗어나는지를 점검하고, 슛의 수로 평균을 설명하며, 팀마다 모수를 두는 모형이 이 크기의 자료로 추정되는지를 본다.</p>
+        <p class="study-lbl">2022년 월드컵 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>득점의 분산은 평균(1.31골)의 1.36배다. 산포 검정은 포아송 분포를 기각하지만(p = 0.004), 4골 이상을 한 칸으로 묶은 적합도 검정은 기각하지 않는다(p = 0.228). 두 검정이 민감한 방향이 다르다.</li>
+          <li>과대산포는 자료 전체가 아니라 대승 세 경기에서 나온다. 128개 관측 가운데 3개가 피어슨 잔차 제곱합의 30%를 차지하고, 이 셋을 빼면 분산과 평균의 비가 0.91이 된다.</li>
+          <li>팀마다 공격과 수비의 모수를 둔 모형은 계수가 63개다. 우도비 검정은 팀 사이의 차이를 인정하지만(p = 0.006) AIC는 절편만 있는 모형보다 나쁘다. 7경기를 치른 팀도 공격 모수의 신뢰구간 상한이 하한의 5배를 넘는다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch03_goal_distribution.png" alt="한 팀의 한 경기 득점의 분포와 포아송 분포의 기대. 무득점은 기대보다 많고 1골은 적으며, 6골과 7골에 기대가 거의 없는 관측이 있다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/03-goal-counts.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/03-goal-counts.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><b>데이터.</b> 이 저장소의 분석은 <a href="https://github.com/statsbomb/open-data" target="_blank" rel="noopener">StatsBomb 공개 데이터</a>를 사용했다. 데이터는 StatsBomb의 소유이며, 이 저장소의 분석과 결론은 StatsBomb의 견해가 아니다. 원데이터는 이용 약관에 따라 다시 배포하지 않는다.</p>
+    <p>집필 중인 저서다. 수치를 인용할 때는 기준 시점(2026년 11월에 받은 판)을 함께 밝힌다.</p>
+  </div>
+</footer>
+
+<script>
+  var TABS = ["overview","data","regression"];
+  function showTab(name){
+    TABS.forEach(function(t){
+      var on = (t === name);
+      document.getElementById("t-"+t).setAttribute("aria-selected", on ? "true" : "false");
+      document.getElementById("tab-"+t).classList.toggle("active", on);
+    });
+    var b = document.getElementById("t-"+name);
+    if (b.scrollIntoView) b.scrollIntoView({inline:"nearest", block:"nearest"});   // 좁은 화면에서 고른 탭이 보이게
+    if (history.replaceState) history.replaceState(null, "", "#"+name);
+    if (window.scrollY > 0) window.scrollTo({top:0, behavior:"auto"});
+  }
+  TABS.forEach(function(t){
+    document.getElementById("t-"+t).addEventListener("click", function(){ showTab(t); });
+  });
+  function fromHash(){
+    var h = location.hash.replace("#","");
+    if (TABS.indexOf(h) >= 0) showTab(h);
+  }
+  window.addEventListener("hashchange", fromHash);
+  fromHash();
+</script>

@@ -2,6 +2,8 @@
 
 축구 경기의 공개 데이터로 분석 방법을 가르치는 교재의 저장소다. 데이터에 기본적인 분석 방법을 하나씩 적용하고, 방법마다 수식과 가정, 추정 절차, 결과를 읽는 법을 자세히 설명한다. I권은 2022년 카타르 월드컵의 64경기를 다룬다. 분석은 모두 파이썬으로 한다.
 
+소개 대시보드: <https://pilsunchoi.github.io/sports-data-analysis/>
+
 자매 교재: [재활 데이터 분석 I](https://github.com/pilsunchoi/rehab-data-analysis)
 
 ## 장
@@ -28,6 +30,9 @@ sports-data-analysis/
 │   ├── 03-goal-counts.qmd                 회귀 2장 원본
 │   ├── 03-goal-counts.md                  회귀 2장 렌더 결과
 │   └── 03-goal-counts_files/              회귀 2장 그림
+├── docs/
+│   ├── index.html                         소개 대시보드(GitHub Pages)
+│   └── img/                               대시보드의 그림(장의 그림을 복사)
 ├── sportsdata/                            모든 장이 불러 쓰는 파이썬 모듈
 │   ├── statsbomb.py                       JSON 읽기, 경기·사건·프리즈 프레임의 표
 │   ├── features.py                        슛의 표, 팀·경기의 표, 골대까지의 거리와 각도
@@ -72,4 +77,6 @@ pip install pandas numpy scipy matplotlib statsmodels tabulate jupyter
 - 데이터는 StatsBomb의 것이다. 이용 약관(`data/raw/statsbomb/LICENSE.pdf`, 2023-09-08 판)에 따라 데이터를 다시 배포하지 않으므로 `data/`는 git에 올리지 않는다. 데이터와 그것으로 한 분석의 상업적 이용도 약관이 막는다.
 - 이 데이터로 한 분석을 공개할 때는 출처를 StatsBomb으로 밝히고 로고를 붙인다. 장의 첫머리에 출처를 적었고, 로고는 아직 붙이지 않았다.
 - 좌표는 가로 120, 세로 80이고 사건을 한 팀이 언제나 왼쪽에서 오른쪽으로 공격하도록 적혀 있다. 좌표의 1단위는 1야드로 읽는다(데이터 1장 III장).
+- 대시보드의 수치와 그림은 손으로 옮긴 것이다. 장을 다시 렌더해 수치가 달라지면 `docs/index.html`의 해당 문장을 고치고 그림을 `docs/img/`에 다시 복사한다.
+- 대시보드 주소와 장의 링크는 GitHub 저장소 `pilsunchoi/sports-data-analysis`의 `main` 가지와 Pages(`/docs`)를 전제로 적었다. 저장소를 만들기 전에는 열리지 않는다.
 - `sportsdata/statsbomb.py`를 고쳐 표의 열이 달라지면 `data/cache/`를 지우고 다시 렌더한다.
