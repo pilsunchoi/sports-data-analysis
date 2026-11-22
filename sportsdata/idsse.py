@@ -131,6 +131,36 @@ def outfield(match_id: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def section_start(match_id: str) -> dict:
+    """구간마다 첫 프레임의 시각(UTC). 위치 파일에서 구간의 첫 프레임을 찾아 읽는다."""
+    data = _file("positions_raw_observed", match_id).read_bytes()
+    out = {}
+    for sec in SECTIONS:
+        i = data.find(f'GameSection="{sec}"'.encode())
+        m = re.compile(rb'<Frame N="\d+" T="([^"]+)"').search(data, i)
+        out[sec] = pd.Timestamp(m.group(1).decode()).tz_convert("UTC")
+    return out
+
+
+def events(match_id: str) -> pd.DataFrame:
+    """한 경기의 사건 가운데 위치가 있는 것. 사건 하나에 한 행.
+
+    t는 사건의 시각(UTC), x와 y는 위치 파일과 같은 좌표(중앙이 원점인 미터)로 옮긴 위치,
+    kind는 사건의 종류(Play, TacklingGame, ShotAtGoal 따위)다. 사건의 위치는 사람이 기록한
+    것이어서 추적의 공 위치와 몇 미터 차이가 날 수 있다.
+    """
+    info = matches().set_index("match_id").loc[match_id]
+    hx, hy = info["pitch_x"] / 2, info["pitch_y"] / 2
+    rows = []
+    for ev in ET.parse(_file("events_raw", match_id)).getroot().iter("Event"):
+        a = ev.attrib
+        if "X-Position" not in a or not len(ev):
+            continue
+        rows.append({"t": pd.Timestamp(a["EventTime"]).tz_convert("UTC"), "x": float(a["X-Position"]) - hx,
+                     "y": float(a["Y-Position"]) - hy, "kind": ev[0].tag})
+    return pd.DataFrame(rows).sort_values("t").reset_index(drop=True)
+
+
 def goals(match_id: str) -> pd.DataFrame:
     """한 경기의 골. 골 하나에 한 행. seconds는 그 구간의 킥오프부터 흐른 시간이다."""
     root = ET.parse(_file("events_raw", match_id)).getroot()

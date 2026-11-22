@@ -41,3 +41,22 @@ def draw_pitch(ax, half: bool = False, lw: float = 0.7, color: str = "black"):
     ax.set_aspect("equal")
     ax.axis("off")
     return ax
+
+
+def draw_pitch_m(ax, lw: float = 0.6, color: str = "0.35", length: float = 105.0, width: float = 68.0):
+    """중앙이 원점인 미터 좌표의 경기장. 추적 데이터(IDSSE)의 좌표에 맞춘다. 선의 치수는 경기 규칙을 따른다."""
+    kw = dict(fill=False, edgecolor=color, linewidth=lw)
+    hx, hy = length / 2, width / 2
+    ax.add_patch(Rectangle((-hx, -hy), length, width, **kw))
+    ax.plot([0, 0], [-hy, hy], color=color, linewidth=lw)
+    ax.add_patch(Circle((0, 0), 9.15, **kw))
+    for s in (-1, 1):
+        ax.add_patch(Rectangle((s * hx, -20.16), -s * 16.5, 40.32, **kw))      # 페널티 구역
+        ax.add_patch(Rectangle((s * hx, -9.16), -s * 5.5, 18.32, **kw))        # 골 구역
+        mid = 180 if s > 0 else 0
+        ax.add_patch(Arc((s * (hx - 11), 0), 18.3, 18.3, theta1=mid - 53.13, theta2=mid + 53.13, edgecolor=color, linewidth=lw))
+    ax.set_xlim(-hx - 2, hx + 2)
+    ax.set_ylim(-hy - 2, hy + 2)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    return ax
