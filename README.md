@@ -16,6 +16,7 @@
 | 다층 모형 | 1 | [축소 추정 — 패스 성공률이 높은 선수는 정말 패스를 잘하는가](chapters/04-player-shrinkage.md) |
 | 생존 분석 | 1 | [사건까지의 시간 — 첫 골은 언제 나오는가](chapters/05-time-to-goal.md) |
 | 연쇄 | 1 | [마르코프 연쇄 — 공이 이 구역에 있으면 골이 날 확률은 얼마인가](chapters/06-possession-markov.md) |
+| 연쇄 | 2 | [패스 네트워크 — 공은 누구를 거쳐 가는가](chapters/07-pass-network.md) |
 
 ## 구조
 
@@ -41,15 +42,19 @@ sports-data-analysis/
 │   ├── 05-time-to-goal_files/             생존 분석 1장 그림
 │   ├── 06-possession-markov.qmd           연쇄 1장 원본
 │   ├── 06-possession-markov.md            연쇄 1장 렌더 결과
-│   └── 06-possession-markov_files/        연쇄 1장 그림
+│   ├── 06-possession-markov_files/        연쇄 1장 그림
+│   ├── 07-pass-network.qmd                연쇄 2장 원본
+│   ├── 07-pass-network.md                 연쇄 2장 렌더 결과
+│   └── 07-pass-network_files/             연쇄 2장 그림
 ├── docs/
 │   ├── index.html                         소개 대시보드(GitHub Pages)
 │   └── img/                               대시보드의 그림(장의 그림을 복사)
 ├── sportsdata/                            모든 장이 불러 쓰는 파이썬 모듈
-│   ├── statsbomb.py                       JSON 읽기, 경기·사건·프리즈 프레임의 표
+│   ├── statsbomb.py                       JSON 읽기, 경기·사건·명단·프리즈 프레임의 표
 │   ├── features.py                        슛·패스·팀·경기·골 시각의 표, 골대까지의 거리와 각도
 │   ├── multilevel.py                      두 수준 모형의 추정(베타-이항, 감마-포아송, 무작위 절편 로지스틱)
 │   ├── markov.py                          경기장의 구역, 점유의 연쇄, 흡수 연쇄의 계산
+│   ├── network.py                         패스 네트워크의 인접 행렬, 중심성, 요약
 │   ├── metrics.py                         예측 확률의 평가(AUC, 브라이어 점수)
 │   ├── pitch.py                           경기장 그림과 그림의 공통 양식
 │   └── report.py                          본문과 표에 쓰는 수의 표기, 숫자 뒤의 조사

@@ -74,6 +74,14 @@ def frames(match_id: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def lineups(match_id: int) -> pd.DataFrame:
+    """한 경기의 명단. 선수 한 명에 한 행. name은 흔히 부르는 이름이고 없으면 등록된 이름이다."""
+    rows = [{"match_id": match_id, "team_name": t["team_name"], "player_id": p["player_id"],
+             "name": p.get("player_nickname") or p["player_name"], "jersey": p["jersey_number"]}
+            for t in _read(f"lineups/{match_id}.json") for p in t["lineup"]]
+    return pd.DataFrame(rows)
+
+
 def polygon_area(flat) -> float:
     """[x1, y1, x2, y2, ...]로 적힌 다각형의 넓이(신발끈 공식)."""
     p = np.asarray(flat, dtype=float).reshape(-1, 2)
