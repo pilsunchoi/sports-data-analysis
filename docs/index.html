@@ -156,6 +156,7 @@
       <button role="tab" aria-selected="false" aria-controls="tab-regression" id="t-regression">회귀</button>
       <button role="tab" aria-selected="false" aria-controls="tab-multilevel" id="t-multilevel">다층 모형</button>
       <button role="tab" aria-selected="false" aria-controls="tab-survival" id="t-survival">생존 분석</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-chain" id="t-chain">연쇄</button>
     </div>
   </div>
 </nav>
@@ -179,7 +180,7 @@
           <tr><td class="r">2</td><td>포아송 회귀, 오프셋, 과대산포, 음이항 모형</td><td>득점은 포아송 분포를 따르는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b"><a href="#multilevel" onclick="showTab('multilevel');return false">다층 모형</a></td><td class="r">1</td><td>경험적 베이즈와 축소 추정, 무작위 절편이 있는 로지스틱 회귀</td><td>패스 성공률이 높은 선수는 정말 패스를 잘하는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b"><a href="#survival" onclick="showTab('survival');return false">생존 분석</a></td><td class="r">1</td><td>Kaplan-Meier, Cox 모형, 시간가변 공변량, 불멸 시간 편향</td><td>첫 골은 언제 나오는가</td><td><span class="pill warn">초고</span></td></tr>
-          <tr><td class="b" rowspan="2">연쇄</td><td class="r">1</td><td>마르코프 연쇄, 전이 행렬, 흡수 확률</td><td>공이 이 구역에 있으면 골이 날 확률은 얼마인가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b" rowspan="2"><a href="#chain" onclick="showTab('chain');return false">연쇄</a></td><td class="r">1</td><td>마르코프 연쇄, 전이 행렬, 흡수 확률, 군집 붓스트랩</td><td>공이 이 구역에 있으면 골이 날 확률은 얼마인가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="r">2</td><td>그래프의 표현, 중심성</td><td>공은 누구를 거쳐 가는가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="b" rowspan="2">공간</td><td class="r">1</td><td>2차원 커널 밀도, 2차원 평활</td><td>슛과 압박은 경기장의 어디에 몰리는가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="r">2</td><td>보로노이 분할, 보인 영역의 처리</td><td>패스를 받는 선수는 얼마나 비어 있는가</td><td><span class="pill info">예정</span></td></tr>
@@ -396,6 +397,33 @@
     </article>
   </section>
 
+  <!-- ============ 연쇄 ============ -->
+  <section role="tabpanel" id="tab-chain" aria-labelledby="t-chain">
+    <h2 class="h">연쇄</h2>
+    <p class="sub lead">사건을 하나씩 보지 않고 이어진 열로 본다. 공이 거쳐 간 길에서 무엇을 알 수 있는가.</p>
+
+    <article class="study">
+      <div class="study-num">1</div>
+      <div class="study-body">
+        <h4 class="study-title">마르코프 연쇄 — 공이 이 구역에 있으면 골이 날 확률은 얼마인가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">마르코프 성질과 전이 행렬 · 전이 확률의 최대우도 추정 · 흡수 연쇄와 기본 행렬 · 첫 단계 분석 · 군집 붓스트랩 · 가정의 점검 · 동작의 가치</p>
+        <p class="study-desc">경기장을 구역 32개로 나누고 점유 10,720개를 구역의 열로 적는다. 구역 사이의 전이 118,186개에서 전이 확률을 추정하고, 역행렬 하나로 공이 각 구역에 있을 때 점유가 골로 끝날 확률을 계산한다. 축구 분석에서 기대 위협(expected threat)이라 부르는 값이다. 그 값의 차이로 패스의 가치를 매긴다.</p>
+        <p class="study-lbl">2022년 월드컵 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>점유가 골로 끝날 확률은 자기 골대 쪽의 0.8%에서 상대 골대 앞 중앙의 9.9%까지다. 같은 깊이의 측면은 중앙의 3분의 1이다.</li>
+          <li>골로 끝난 비율을 구역마다 직접 센 추정은 표준오차가 연쇄를 거친 추정의 평균 2.7배다. 정밀도는 마르코프 성질이라는 가정에서 온다. 점검하면 관측이 예측보다 0.31%포인트 높고(-0.12~0.85), 어긋나는 방향은 긴 점유 쪽이다.</li>
+          <li>성공률이 가장 높은 선수의 패스는 값의 합이 음수다. 패스가 150개 이상인 선수 155명 가운데 132명이 그렇다. 성공률과 패스의 가치는 상관이 0.62이고 다른 것을 측정한다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch06_zone_values.png" alt="경기장을 가로 8칸, 세로 4칸으로 나눈 구역마다 점유가 골로 끝날 확률. 자기 진영은 1% 안팎이고 상대 골대 앞 중앙의 두 구역이 9.7%와 9.9%로 가장 높다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/06-possession-markov.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/06-possession-markov.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/sportsdata/markov.py" target="_blank" rel="noopener">연쇄의 계산 코드</a>
+        </div>
+      </div>
+    </article>
+  </section>
+
   </div>
 </main>
 
@@ -407,7 +435,7 @@
 </footer>
 
 <script>
-  var TABS = ["overview","data","regression","multilevel","survival"];
+  var TABS = ["overview","data","regression","multilevel","survival","chain"];
   function showTab(name){
     TABS.forEach(function(t){
       var on = (t === name);
