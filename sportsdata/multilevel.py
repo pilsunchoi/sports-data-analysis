@@ -3,9 +3,11 @@
 - beta_binomial_fit: 집단마다의 성공 확률이 베타 분포를 따르는 모형(베타-이항)
 - gamma_poisson_fit: 집단마다의 비율이 감마 분포를 따르는 모형(감마-포아송)
 - RandomInterceptLogit: 무작위 절편이 있는 로지스틱 회귀(라플라스 근사)
+- LinearMixed: 분산 성분이 여럿인 선형 혼합모형(REML 또는 최대우도). 방법은 운동학 2장에 있다
 """
 
 import numpy as np
+import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import betaln, expit, gammaln
 from statsmodels.tools.numdiff import approx_hess
@@ -88,3 +90,63 @@ class RandomInterceptLogit:
         self.u, hess = self._modes(self.X @ self.beta, self.tau)
         self.u_sd = 1 / np.sqrt(hess)          # u_j의 조건부 표준편차(고정 효과와 tau를 추정치로 고정)
         return self
+
+
+class LinearMixed:
+    """선형 혼합모형 y = X beta + sum_k Z_k u_k + e. u_k ~ N(0, s_k^2 I), e ~ N(0, s^2 I)이고 서로 독립이다.
+
+    Z_k는 집단의 표지 행렬이거나(무작위 절편) 그것에 변수를 곱한 것이다(무작위 기울기). 성분끼리
+    겹치거나 교차해도 된다. V = I + sum_k g_k Z_k Z_k'을 통째로 계산하므로 관측이 수천 개를
+    넘으면 느리다. g_k = s_k^2 / s^2이고, beta와 s^2은 g가 주어지면 식으로 구해지므로 g만 찾는다.
+    """
+
+    def __init__(self, reml: bool = True):
+        self.reml = reml
+
+    def _profile(self, logg):
+        n, p = self.X.shape
+        V = np.eye(n)
+        for g, ZZ in zip(np.exp(logg), self._ZZ):
+            V += g * ZZ
+        L = np.linalg.cholesky(V)
+        Xs, ys = np.linalg.solve(L, self.X), np.linalg.solve(L, self.y)
+        XtX = Xs.T @ Xs
+        beta = np.linalg.solve(XtX, Xs.T @ ys)
+        r = ys - Xs @ beta
+        df = n - p if self.reml else n
+        s2 = float(r @ r) / df
+        ll = -0.5 * (df * np.log(s2) + 2 * np.log(np.diag(L)).sum() + df * (1 + np.log(2 * np.pi)))
+        if self.reml:
+            ll -= 0.5 * np.linalg.slogdet(XtX)[1]
+        return ll, beta, s2, XtX, L
+
+    def fit(self, y, X, Z):
+        """Z는 행렬의 목록이다. 빈 목록이면 보통의 최소제곱이다."""
+        self.y, self.X = np.asarray(y, float), np.asarray(X, float)
+        self.Z = [np.asarray(z, float) for z in Z]
+        self._ZZ = [z @ z.T for z in self.Z]
+        best = None
+        for start in (0.0, -2.0, 2.0) if self.Z else (0.0,):
+            res = minimize(lambda t: -self._profile(t)[0], np.full(len(self.Z), start), method="L-BFGS-B",
+                           bounds=[(-12, 8)] * len(self.Z)) if self.Z else None
+            x = res.x if res is not None else np.zeros(0)
+            val = self._profile(x)[0]
+            if best is None or val > best[0]:
+                best = (val, x)
+        self.loglik, logg = best
+        _, self.beta, self.s2, XtX, L = self._profile(logg)
+        self.cov = self.s2 * np.linalg.inv(XtX)
+        self.se = np.sqrt(np.diag(self.cov))
+        self.var = np.exp(logg) * self.s2                     # 성분마다의 분산
+        r = self.y - self.X @ self.beta
+        Vinv_r = np.linalg.solve(L.T, np.linalg.solve(L, r))
+        self.u = [g * z.T @ Vinv_r for g, z in zip(np.exp(logg), self.Z)]   # 무작위 효과의 예측값
+        return self
+
+
+def indicator(labels) -> np.ndarray:
+    """집단의 표지 행렬. 행은 관측, 열은 집단이다."""
+    codes, _ = pd.factorize(pd.Series(list(labels)))
+    Z = np.zeros((len(codes), codes.max() + 1))
+    Z[np.arange(len(codes)), codes] = 1.0
+    return Z

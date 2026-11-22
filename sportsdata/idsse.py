@@ -129,3 +129,23 @@ def outfield(match_id: str) -> pd.DataFrame:
                          "name": pl.at[pid, "name"], "position": pl.at[pid, "position"], "frames": int(seen.sum()),
                          "first": int(np.argmax(seen)), "full": bool(seen.all())})
     return pd.DataFrame(rows)
+
+
+def goals(match_id: str) -> pd.DataFrame:
+    """한 경기의 골. 골 하나에 한 행. seconds는 그 구간의 킥오프부터 흐른 시간이다."""
+    root = ET.parse(_file("events_raw", match_id)).getroot()
+    kick, rows = {}, []
+    for ev in root.iter("Event"):
+        ko = ev.find("KickOff")
+        if ko is not None and "GameSection" in ko.attrib:
+            kick[ko.attrib["GameSection"]] = pd.Timestamp(ev.attrib["EventTime"])
+    for ev in root.iter("Event"):
+        for shot in ev.iter("ShotAtGoal"):
+            if shot.find("SuccessfulShot") is not None:
+                t = pd.Timestamp(ev.attrib["EventTime"])
+                sec = "secondHalf" if t >= kick["secondHalf"] else "firstHalf"
+                rows.append({"match_id": match_id, "section": sec, "seconds": (t - kick[sec]).total_seconds(),
+                             "team_id": shot.attrib["Team"], "result": shot.find("SuccessfulShot").attrib["CurrentResult"]})
+        for og in ev.iter("OwnGoal"):
+            raise NotImplementedError("자책골의 처리가 없다")
+    return pd.DataFrame(rows, columns=["match_id", "section", "seconds", "team_id", "result"]).sort_values(["section", "seconds"]).reset_index(drop=True)
