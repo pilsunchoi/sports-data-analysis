@@ -157,6 +157,7 @@
       <button role="tab" aria-selected="false" aria-controls="tab-multilevel" id="t-multilevel">다층 모형</button>
       <button role="tab" aria-selected="false" aria-controls="tab-survival" id="t-survival">생존 분석</button>
       <button role="tab" aria-selected="false" aria-controls="tab-chain" id="t-chain">연쇄</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-spatial" id="t-spatial">공간</button>
     </div>
   </div>
 </nav>
@@ -182,7 +183,7 @@
           <tr><td class="b"><a href="#survival" onclick="showTab('survival');return false">생존 분석</a></td><td class="r">1</td><td>Kaplan-Meier, Cox 모형, 시간가변 공변량, 불멸 시간 편향</td><td>첫 골은 언제 나오는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b" rowspan="2"><a href="#chain" onclick="showTab('chain');return false">연쇄</a></td><td class="r">1</td><td>마르코프 연쇄, 전이 행렬, 흡수 확률, 군집 붓스트랩</td><td>공이 이 구역에 있으면 골이 날 확률은 얼마인가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="r">2</td><td>그래프의 표현, 중심성, 희박화, 급내상관계수</td><td>공은 누구를 거쳐 가는가</td><td><span class="pill warn">초고</span></td></tr>
-          <tr><td class="b" rowspan="2">공간</td><td class="r">1</td><td>2차원 커널 밀도, 2차원 평활</td><td>슛과 압박은 경기장의 어디에 몰리는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b" rowspan="2"><a href="#spatial" onclick="showTab('spatial');return false">공간</a></td><td class="r">1</td><td>2차원 커널 밀도, 띠너비의 교차검증, 벌점 스플라인 평활</td><td>슛과 압박은 경기장의 어디에 몰리는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="r">2</td><td>보로노이 분할, 보인 영역의 처리</td><td>패스를 받는 선수는 얼마나 비어 있는가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="b">차원 축소</td><td class="r">1</td><td>주성분 분석, 군집</td><td>선수의 역할은 몇 가지인가</td><td><span class="pill info">예정</span></td></tr>
           <tr><td class="b" rowspan="2">운동학</td><td class="r">1</td><td>위치의 수치 미분, 평활, 속도와 가속도</td><td>위치 기록에서 속도를 어떻게 얻는가</td><td><span class="pill info">예정</span></td></tr>
@@ -446,6 +447,33 @@
     </article>
   </section>
 
+  <!-- ============ 공간 ============ -->
+  <section role="tabpanel" id="tab-spatial" aria-labelledby="t-spatial">
+    <h2 class="h">공간</h2>
+    <p class="sub lead">경기장 위에 흩어진 점에서 매끄러운 면을 추정한다. 얼마나 매끄럽게 할지를 자료로 정한다.</p>
+
+    <article class="study">
+      <div class="study-num">1</div>
+      <div class="study-body">
+        <h4 class="study-title">커널 밀도와 2차원 평활 — 슛과 압박은 경기장의 어디에 몰리는가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">커널 밀도 추정 · 띠너비와 치우침·분산 · 기준 규칙 · 가능도 교차검증 · 경계의 반사 교정 · 두 밀도의 비 · 벌점 스플라인 로지스틱 회귀 · 유효 자유도 · 평활 모수의 선택</p>
+        <p class="study-desc">슛 1,430개와 압박 16,554개의 위치에서 밀도를 추정한다. 띠너비를 경기 단위의 교차검증으로 고르고, 경기장의 끝에서 생기는 치우침을 반사로 교정한다. 이어서 골이 될 확률의 면을 2차원 벌점 스플라인으로 추정해 회귀 1장의 거리와 각도의 모형과 비교한다.</p>
+        <p class="study-lbl">2022년 월드컵 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>교차검증이 고른 띠너비는 슛이 4야드, 압박이 1.5야드다. 기준 규칙은 슛에 2.68야드, 압박에 5.19야드를 주어 두 자료에서 반대 방향으로 어긋난다.</li>
+          <li>교정하지 않으면 슛의 밀도는 골대 정면에서 골라인까지 1야드인 지점에서 31% 낮게 추정된다. 슛의 61%가 페널티 구역 안에서 나오고, 압박은 가운데 3분의 1에 44%가 있다.</li>
+          <li>유효 자유도 18.1의 2차원 평활은 모수 3개의 거리와 각도 모형을 이기지 못한다. 교차검증의 로그 손실이 0.3021 대 0.2985이고 차이의 95% 구간은 -0.0022~0.0100이다. 슛이 없는 구석에서 평활한 면은 52%를 준다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch08_densities.png" alt="왼쪽은 슛의 밀도로 골대 정면 10야드 지점에 봉우리가 하나 있다. 오른쪽은 압박의 밀도로 경기장 전체에 퍼져 있고 양쪽 터치라인 쪽과 중앙에 많다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/08-spatial-smoothing.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/08-spatial-smoothing.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/sportsdata/smooth.py" target="_blank" rel="noopener">평활의 계산 코드</a>
+        </div>
+      </div>
+    </article>
+  </section>
+
   </div>
 </main>
 
@@ -457,7 +485,7 @@
 </footer>
 
 <script>
-  var TABS = ["overview","data","regression","multilevel","survival","chain"];
+  var TABS = ["overview","data","regression","multilevel","survival","chain","spatial"];
   function showTab(name){
     TABS.forEach(function(t){
       var on = (t === name);
