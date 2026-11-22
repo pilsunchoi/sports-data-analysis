@@ -20,6 +20,7 @@
 | 공간 | 1 | [커널 밀도와 2차원 평활 — 슛과 압박은 경기장의 어디에 몰리는가](chapters/08-spatial-smoothing.md) |
 | 공간 | 2 | [보로노이 분할 — 패스를 받는 선수는 얼마나 비어 있는가](chapters/09-space-control.md) |
 | 차원 축소 | 1 | [주성분 분석과 군집 — 선수의 역할은 몇 가지인가](chapters/10-pca-and-clustering.md) |
+| 운동학 | 1 | [위치의 미분과 평활 — 위치 기록에서 속도를 어떻게 얻는가](chapters/11-speed-from-tracking.md) |
 
 ## 구조
 
@@ -57,7 +58,10 @@ sports-data-analysis/
 │   ├── 09-space-control_files/            공간 2장 그림
 │   ├── 10-pca-and-clustering.qmd          차원 축소 1장 원본
 │   ├── 10-pca-and-clustering.md           차원 축소 1장 렌더 결과
-│   └── 10-pca-and-clustering_files/       차원 축소 1장 그림
+│   ├── 10-pca-and-clustering_files/       차원 축소 1장 그림
+│   ├── 11-speed-from-tracking.qmd         운동학 1장 원본
+│   ├── 11-speed-from-tracking.md          운동학 1장 렌더 결과
+│   └── 11-speed-from-tracking_files/      운동학 1장 그림
 ├── docs/
 │   ├── index.html                         소개 대시보드(GitHub Pages)
 │   └── img/                               대시보드의 그림(장의 그림을 복사)
@@ -65,6 +69,8 @@ sports-data-analysis/
 │   ├── statsbomb.py                       JSON 읽기, 경기·사건·명단·프리즈 프레임의 표
 │   ├── features.py                        슛·패스·팀·경기·골 시각·선수별 변수의 표, 골대까지의 거리와 각도
 │   ├── cluster.py                         주성분 분석, k-평균, 실루엣, 간격 통계량, 조정 랜드 지수
+│   ├── idsse.py                           분데스리가 추적 데이터(XML) 읽기, 경기·명단·위치의 배열
+│   ├── kinematics.py                      차분과 Savitzky-Golay 가중치, 속도와 가속도, 끊긴 궤적의 처리
 │   ├── multilevel.py                      두 수준 모형의 추정(베타-이항, 감마-포아송, 무작위 절편 로지스틱)
 │   ├── markov.py                          경기장의 구역, 점유의 연쇄, 흡수 연쇄의 계산
 │   ├── network.py                         패스 네트워크의 인접 행렬, 중심성, 요약
@@ -93,7 +99,7 @@ python scripts/data_status.py
 
 첫 명령이 StatsBomb 공개 데이터 저장소에서 2022 남자 월드컵의 파일을 받아 `data/raw/statsbomb/`에 둔다. 이미 받은 파일은 다시 받지 않는다. 둘째 명령이 경기, 사건, 슛, 프리즈 프레임의 수를 낸다.
 
-운동학 묶음의 두 장은 아직 쓰지 않았다. 그 장들이 쓸 데이터는 독일 분데스리가 2022/23 시즌 7경기의 추적·사건 데이터(Bassek et al., 2025, CC BY 4.0)이고 다음 명령으로 받는다. figshare에서 XML 21개(2.6GB)를 받아 `data/raw/idsse/`에 두고 MD5를 대조한다. 앞의 장들을 렌더하는 데는 필요 없다.
+운동학 묶음의 두 장은 다른 데이터를 쓴다. 독일 분데스리가 2022/23 시즌 7경기의 추적·사건 데이터(Bassek et al., 2025, CC BY 4.0)이고 다음 명령으로 받는다. 운동학 2장은 아직 쓰지 않았다. figshare에서 XML 21개(2.6GB)를 받아 `data/raw/idsse/`에 두고 MD5를 대조한다. 다른 묶음의 장을 렌더하는 데는 필요 없다. 위치 파일은 처음 읽을 때 배열로 바꾸어 `data/cache/`에 저장하며 1분쯤 걸린다.
 
 ```bash
 python scripts/fetch_idsse.py

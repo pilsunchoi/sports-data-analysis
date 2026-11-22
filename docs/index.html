@@ -159,6 +159,7 @@
       <button role="tab" aria-selected="false" aria-controls="tab-chain" id="t-chain">연쇄</button>
       <button role="tab" aria-selected="false" aria-controls="tab-spatial" id="t-spatial">공간</button>
       <button role="tab" aria-selected="false" aria-controls="tab-reduction" id="t-reduction">차원 축소</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-kinematics" id="t-kinematics">운동학</button>
     </div>
   </div>
 </nav>
@@ -187,7 +188,7 @@
           <tr><td class="b" rowspan="2"><a href="#spatial" onclick="showTab('spatial');return false">공간</a></td><td class="r">1</td><td>2차원 커널 밀도, 띠너비의 교차검증, 벌점 스플라인 평활</td><td>슛과 압박은 경기장의 어디에 몰리는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="r">2</td><td>보로노이 분할, 일부만 관측된 자료에서의 범위, 슛을 막는 수비수</td><td>패스를 받는 선수는 얼마나 비어 있는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="b"><a href="#reduction" onclick="showTab('reduction');return false">차원 축소</a></td><td class="r">1</td><td>주성분 분석, k-평균과 계층 군집, 군집 수의 선택</td><td>선수의 역할은 몇 가지인가</td><td><span class="pill warn">초고</span></td></tr>
-          <tr><td class="b" rowspan="2">운동학</td><td class="r">1</td><td>위치의 수치 미분, 평활, 속도와 가속도</td><td>위치 기록에서 속도를 어떻게 얻는가</td><td><span class="pill info">예정</span></td></tr>
+          <tr><td class="b" rowspan="2"><a href="#kinematics" onclick="showTab('kinematics');return false">운동학</a></td><td class="r">1</td><td>위치의 수치 미분, 평활과 창의 너비, 속도와 가속도, 활동량 지표의 정의</td><td>위치 기록에서 속도를 어떻게 얻는가</td><td><span class="pill warn">초고</span></td></tr>
           <tr><td class="r">2</td><td>반복 측정의 선형 혼합모형</td><td>선수는 후반에 덜 뛰는가</td><td><span class="pill info">예정</span></td></tr>
         </tbody>
       </table>
@@ -245,7 +246,7 @@
     <div class="panel">
       <p><b>무엇인가.</b> 2022년 11월 20일부터 12월 18일까지 카타르에서 32개 나라가 치른 64경기의 사건 데이터와 프리즈 프레임이다. 데이터 회사 StatsBomb이 연구와 분석을 위해 무료로 공개했다.</p>
       <p><b>왜 이 데이터인가.</b> 방법을 보이는 것이 목적이므로 많은 경기가 필요하지 않다. 한 대회는 누구나 아는 경기들이어서 결과를 확인하기 쉽고, 같은 64경기에 대해 사건과 선수 배치의 데이터가 함께 공개되어 있어 층을 올라가며 쓸 수 있다.</p>
-      <p><b>운동학 묶음만 다른 데이터를 쓴다.</b> 속도와 가속도를 다루는 두 장은 독일 분데스리가 2022/23 시즌 7경기의 추적 데이터(Bassek et al., 2025, CC BY 4.0)를 쓸 예정이다. 이 대회의 공개된 추적 데이터는 중계 영상에서 뽑은 것이어서 화면에 잡히지 않은 선수의 위치가 추정값이다. 위치를 미분해 속도를 얻으려면 경기장에 고정한 카메라로 선수 전원을 끊기지 않고 측정한 데이터가 필요하다.</p>
+      <p><b>운동학 묶음만 다른 데이터를 쓴다.</b> 속도와 가속도를 다루는 두 장은 독일 분데스리가 2022/23 시즌 7경기의 추적 데이터(Bassek et al., 2025, CC BY 4.0)를 쓴다. 이 대회의 공개된 추적 데이터는 중계 영상에서 뽑은 것이어서 화면에 잡히지 않은 선수의 위치가 추정값이다. 위치를 미분해 속도를 얻으려면 경기장에 고정한 카메라로 선수 전원을 끊기지 않고 측정한 데이터가 필요하다.</p>
       <p><b>어디서 받나.</b> <a href="https://github.com/statsbomb/open-data" target="_blank" rel="noopener">StatsBomb의 GitHub 저장소</a>에서 가입 없이 받는다. 이 저장소의 스크립트가 필요한 파일만 받아 온다.</p>
     </div>
 
@@ -523,6 +524,33 @@
     </article>
   </section>
 
+  <!-- ============ 운동학 ============ -->
+  <section role="tabpanel" id="tab-kinematics" aria-labelledby="t-kinematics">
+    <h2 class="h">운동학</h2>
+    <p class="sub lead">선수의 위치를 초당 25번 기록한 추적 데이터에서 속도와 가속도를 얻는다. 이 묶음만 독일 분데스리가 7경기의 데이터를 쓴다.</p>
+
+    <article class="study">
+      <div class="study-num">1</div>
+      <div class="study-body">
+        <h4 class="study-title">위치의 미분과 평활 — 위치 기록에서 속도를 어떻게 얻는가<span class="pill warn">초고</span></h4>
+        <p class="study-sub">수치 미분과 오차의 증폭 · 궤적이 끊긴 곳의 확인 · 두 점 차분, 이동 평균, Savitzky-Golay · 이득과 주파수 · 치우침과 분산 · 모의 궤적에서 창의 너비 · 속력의 변화율과 가속도 벡터 · 고속 주행, 스프린트, 가속 횟수의 정의</p>
+        <p class="study-desc">위치를 시간으로 미분해 속도와 가속도를 얻는 계산을 설명한다. 미분은 위치의 오차를 키우므로 평활이 필요하고, 평활의 정도는 오차의 분산과 치우침 사이의 선택이다. 그 선택에 따라 선수의 활동량 지표가 얼마나 달라지는지를 지표별로 비교한다.</p>
+        <p class="study-lbl">분데스리가 7경기 데이터에 적용한 결과</p>
+        <ul class="study-points">
+          <li>위치를 1cm로 반올림한 것만으로 이웃한 세 프레임에서 구한 가속도의 오차가 4.4m/s²이 된다. 높은 가속으로 세는 문턱 3m/s²보다 크다.</li>
+          <li>선수의 위치가 한 프레임 사이에 0.5m 넘게 옮겨진 곳이 1,060곳 있다. 끊지 않고 미분하면 스프린트 거리가 13% 늘어난다.</li>
+          <li>창의 너비를 0.2초에서 2초로 바꾸면 이동 거리는 3.7% 달라지지만 스프린트 거리는 24% 줄어든다. 0.5초 이상 이어진 높은 가속의 횟수는 창에 따라 한 경기 8번에서 40번까지 달라지고 선수의 순서도 바뀐다.</li>
+        </ul>
+        <div class="study-figs"><img src="img/ch11_example.png" alt="한 선수의 12초 동안의 속력과 속력의 변화율. 이웃 프레임의 차분으로 구한 속력은 0.5초 창의 추정과 거의 겹치지만, 변화율은 위아래로 크게 퍼져 문턱 3m/s²을 수십 번 넘는다" loading="lazy"></div>
+        <div class="study-links">
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/11-speed-from-tracking.md" target="_blank" rel="noopener">장 읽기</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/chapters/11-speed-from-tracking.qmd" target="_blank" rel="noopener">파이썬 문서(원본)</a>
+          <a href="https://github.com/pilsunchoi/sports-data-analysis/blob/main/sportsdata/kinematics.py" target="_blank" rel="noopener">미분과 평활의 계산 코드</a>
+        </div>
+      </div>
+    </article>
+  </section>
+
   </div>
 </main>
 
@@ -534,7 +562,7 @@
 </footer>
 
 <script>
-  var TABS = ["overview","data","regression","multilevel","survival","chain","spatial","reduction"];
+  var TABS = ["overview","data","regression","multilevel","survival","chain","spatial","reduction","kinematics"];
   function showTab(name){
     TABS.forEach(function(t){
       var on = (t === name);
