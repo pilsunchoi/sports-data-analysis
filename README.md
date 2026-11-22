@@ -60,10 +60,12 @@ sports-data-analysis/
 │   └── report.py                          본문과 표에 쓰는 수의 표기, 숫자 뒤의 조사
 ├── scripts/
 │   ├── fetch_statsbomb.py                 2022 월드컵의 사건과 프리즈 프레임을 받는다
+│   ├── fetch_idsse.py                     분데스리가 7경기의 추적·사건 데이터를 받는다(운동학 묶음)
 │   ├── data_status.py                     받은 데이터의 경기와 사건 수를 센다
 │   └── postrender_md.py                   렌더된 MD를 GitHub용으로 손질(물결 이스케이프)
 └── data/                                  공개하지 않는다
     ├── raw/statsbomb/                     받은 파일(경로와 이름을 바꾸지 않는다)
+    ├── raw/idsse/                         분데스리가 7경기의 XML(이름을 바꾸지 않는다)
     └── cache/                             대회 전체를 쌓은 표(처음 읽을 때 만든다)
 ```
 
@@ -75,6 +77,12 @@ python scripts/data_status.py
 ```
 
 첫 명령이 StatsBomb 공개 데이터 저장소에서 2022 남자 월드컵의 파일을 받아 `data/raw/statsbomb/`에 둔다. 이미 받은 파일은 다시 받지 않는다. 둘째 명령이 경기, 사건, 슛, 프리즈 프레임의 수를 낸다.
+
+운동학 묶음의 두 장은 아직 쓰지 않았다. 그 장들이 쓸 데이터는 독일 분데스리가 2022/23 시즌 7경기의 추적·사건 데이터(Bassek et al., 2025, CC BY 4.0)이고 다음 명령으로 받는다. figshare에서 XML 21개(2.6GB)를 받아 `data/raw/idsse/`에 두고 MD5를 대조한다. 앞의 장들을 렌더하는 데는 필요 없다.
+
+```bash
+python scripts/fetch_idsse.py
+```
 
 ## 렌더하기
 
