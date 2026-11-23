@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>스포츠 데이터 분석 I</title>
 <meta name="description" content="공개 축구 데이터에 기본적인 분석 방법을 하나씩 적용하며 설명하는 교재. 그 첫 번째로 2022년 카타르 월드컵 64경기의 StatsBomb 공개 데이터를 다룬다.">
+<link href="https://fonts.googleapis.com/css2?family=Mona+Sans:wght@200..900&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#f6f7f9; --panel:#ffffff; --ink:#1b2430; --muted:#5b6673;
@@ -17,8 +18,8 @@
   body{
     background:var(--bg); color:var(--ink);
     word-break:keep-all; overflow-wrap:break-word;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",Roboto,sans-serif;
-    line-height:1.6; -webkit-text-size-adjust:100%;
+    font-family:"Mona Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",Roboto,sans-serif;
+    line-height:1.5; -webkit-text-size-adjust:100%;
   }
   .wrap{max-width:960px; margin:0 auto; padding:0 16px}
   a{color:var(--brand); text-decoration:none}
@@ -28,7 +29,7 @@
   /* header — 헤더 색은 대시보드마다 다르다. 이 저서는 연한 초록 */
   header.top{background:#e2f0dc; border-bottom:1px solid #bcd9b2}
   .brand{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:22px 0 6px}
-  .brand h1{font-size:1.95rem;font-weight:700;margin:0;letter-spacing:-.01em}
+  .brand h1{font-size:1.95rem;font-weight:600;margin:0;letter-spacing:-.01em}
   .brand .tag{color:#2e6a24;font-size:1.17rem;font-weight:700}
   .brand .wip{display:inline-block;padding:1px 10px;border-radius:999px;background:#efedf9;color:#4a3aa7;font-size:.8rem;font-weight:700;vertical-align:3px}
   .lede{color:var(--muted);margin:0 0 16px;font-size:.98rem}
@@ -49,10 +50,10 @@
   section[role=tabpanel]{display:none;animation:fade .18s ease}
   section[role=tabpanel].active{display:block}
   @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-  h2.h{font-size:1.56rem;margin:2px 0 6px}
+  h2.h{font-size:1.56rem;font-weight:600;margin:2px 0 6px}
   .sub{color:var(--muted);margin:6px 0 14px;font-size:.95rem}
   .sub.lead{color:var(--ink);font-weight:600;font-size:1.02rem;margin:0 0 18px}
-  h3{font-size:1.2rem;margin:30px 0 8px;letter-spacing:-.01em}
+  h3{font-size:1.2rem;font-weight:600;margin:30px 0 8px;letter-spacing:-.01em}
   section[role=tabpanel] > h3{border-top:1px solid var(--line);padding-top:24px}
   section[role=tabpanel] > h3:first-of-type{border-top:none;padding-top:0;margin-top:22px}
   p{margin:8px 0}
