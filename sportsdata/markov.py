@@ -18,7 +18,7 @@ class Grid:
         return ix * self.ny + iy
 
     def to_matrix(self, values):
-        """구역별 값을 세로 ny행, 가로 nx열의 행렬로(그림에 쓴다)."""
+        """구역별 값을 세로 ny행, 가로 nx열의 행렬로(그림에 사용한다)."""
         return np.asarray(values).reshape(self.nx, self.ny).T
 
     def label(self, z: int) -> str:

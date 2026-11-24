@@ -21,7 +21,7 @@ def _kernel(at, x, h: float, bounds=None) -> np.ndarray:
 
 
 def kde_grid(x, y, gx, gy, h: float, reflect: bool = True) -> np.ndarray:
-    """격자 위의 밀도. 행은 gy, 열은 gx다. 두 좌표에 같은 띠너비 h의 정규 커널을 곱해 쓴다."""
+    """격자 위의 밀도. 행은 gy, 열은 gx다. 두 좌표에 같은 띠너비 h의 정규 커널을 곱해 사용한다."""
     bx, by = PITCH if reflect else (None, None)
     return _kernel(gy, y, h, by) @ _kernel(gx, x, h, bx).T / len(x)
 
@@ -50,7 +50,7 @@ def bin_counts(x, y, cell: float = 0.5):
 
 def kde_binned(C: np.ndarray, gx, gy, h: float, reflect: bool = True) -> np.ndarray:
     """칸에 센 개수 C에서 칸의 중심마다의 밀도. 점을 칸의 중심으로 옮긴 뒤의 kde_grid와 같다.
-    점이 많을 때 쓴다. 띠너비가 칸의 크기보다 충분히 크면 옮긴 것의 영향은 작다."""
+    점이 많을 때 사용한다. 띠너비가 칸의 크기보다 충분히 크면 옮긴 것의 영향은 작다."""
     bx, by = PITCH if reflect else (None, None)
     return _kernel(gy, gy, h, by) @ C @ _kernel(gx, gx, h, bx).T / C.sum()
 

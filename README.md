@@ -104,7 +104,7 @@ python scripts/data_status.py
 
 첫 명령이 StatsBomb 공개 데이터 저장소에서 2022 남자 월드컵의 파일을 받아 `data/raw/statsbomb/`에 둔다. 이미 받은 파일은 다시 받지 않는다. 둘째 명령이 경기, 사건, 슛, 프리즈 프레임의 수를 낸다.
 
-운동학 묶음의 두 장은 다른 데이터를 쓴다. 독일 분데스리가 2022/23 시즌 7경기의 추적·사건 데이터(Bassek et al., 2025, CC BY 4.0)이고 다음 명령으로 받는다. figshare에서 XML 21개(2.6GB)를 받아 `data/raw/idsse/`에 두고 MD5를 대조한다. 다른 묶음의 장을 렌더하는 데는 필요 없다. 위치 파일은 처음 읽을 때 배열로 바꾸어 `data/cache/`에 저장하며 1분쯤 걸린다.
+운동학 묶음의 두 장은 다른 데이터를 사용한다. 독일 분데스리가 2022/23 시즌 7경기의 추적·사건 데이터(Bassek et al., 2025, CC BY 4.0)이고 다음 명령으로 받는다. figshare에서 XML 21개(2.6GB)를 받아 `data/raw/idsse/`에 두고 MD5를 대조한다. 다른 묶음의 장을 렌더하는 데는 필요 없다. 위치 파일은 처음 읽을 때 배열로 바꾸어 `data/cache/`에 저장하며 1분쯤 걸린다.
 
 ```bash
 python scripts/fetch_idsse.py
