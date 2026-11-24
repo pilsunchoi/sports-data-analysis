@@ -145,7 +145,7 @@ $$\hat{\boldsymbol\beta} = (\mathbf{X}^\top \mathbf{V}^{-1} \mathbf{X})^{-1} \ma
 
 보통의 최소제곱은 $\mathbf{V} = \sigma^2 \mathbf{I}$인 경우다. 식 (6)의 둘째 식에서 표준오차가 $\mathbf{V}$에 달려 있다는 것을 알 수 있다. 무작위 효과의 구성을 바꾸면 $\mathbf{V}$가 바뀌고 표준오차가 바뀐다.
 
-분산 성분은 모르므로 추정한다. $\mathbf{y}$가 평균 $\mathbf{X}\boldsymbol\beta$, 공분산 $\mathbf{V}$의 다변량 정규분포를 따른다는 것에서 가능도를 적고 최대화한다. 최대가능도 추정은 분산 성분을 작게 추정하는 경향이 있다. 고정 효과를 추정하는 데 쓴 자유도를 고려하지 않기 때문이고, 표본분산을 $n$으로 나누면 작게 나오는 것과 같은 이유다. Patterson and Thompson (1971)의 제한 최대가능도(REML)는 고정 효과에 의존하지 않는 데이터의 대비만으로 가능도를 구성해 이것을 교정한다. 이 장의 추정은 모두 REML이다. 계산은 `sportsdata/multilevel.py`에 직접 구현했다. 분산의 비 $\tau_u^2/\sigma^2$과 $\tau_w^2/\sigma^2$이 주어지면 $\hat{\boldsymbol\beta}$와 $\hat\sigma^2$이 식으로 구해지므로 두 비만 수치로 찾는다. 식 (2)와 식 (3)의 추정값이 `statsmodels`의 결과와 소수 셋째 자리까지 같은 것을 확인했다.
+분산 성분은 모르므로 추정한다. $\mathbf{y}$가 평균 $\mathbf{X}\boldsymbol\beta$, 공분산 $\mathbf{V}$의 다변량 정규분포를 따른다는 것에서 가능도를 적고 최대화한다. 최대가능도 추정은 분산 성분을 작게 추정하는 경향이 있다. 고정 효과를 추정하는 데 사용한 자유도를 고려하지 않기 때문이고, 표본분산을 $n$으로 나누면 작게 나오는 것과 같은 이유다. Patterson and Thompson (1971)의 제한 최대가능도(REML)는 고정 효과에 의존하지 않는 데이터의 대비만으로 가능도를 구성해 이것을 교정한다. 이 장의 추정은 모두 REML이다. 계산은 `sportsdata/multilevel.py`에 직접 구현했다. 분산의 비 $\tau_u^2/\sigma^2$과 $\tau_w^2/\sigma^2$이 주어지면 $\hat{\boldsymbol\beta}$와 $\hat\sigma^2$이 식으로 구해지므로 두 비만 수치로 찾는다. 식 (2)와 식 (3)의 추정값이 `statsmodels`의 결과와 소수 셋째 자리까지 같은 것을 확인했다.
 
 ### 4. 무작위 효과의 예측
 
